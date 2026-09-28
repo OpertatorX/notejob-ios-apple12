@@ -1,38 +1,60 @@
-// OPERATORX_FORCE_EAS_PROJECT_ID
-const imported = require("./app.config.base.js");
-const baseConfig =
-  imported && imported.default
-    ? imported.default
-    : imported;
-const PROJECT_ID = "a8ec463b-a530-41c9-af1f-c5499359f881";
-module.exports = (ctx) => {
-  const raw =
-    typeof baseConfig === "function"
-      ? baseConfig(ctx)
-      : baseConfig;
-  if (raw && raw.expo) {
-    return {
-      ...raw,
-      expo: {
-        ...raw.expo,
-        extra: {
-          ...(raw.expo.extra || {}),
-          eas: {
-            ...((raw.expo.extra && raw.expo.extra.eas) || {}),
-            projectId: PROJECT_ID,
-          },
-        },
-      },
-    };
+const fs = require('fs');
+const path = require('path');
+
+module.exports = () => {
+  const root = __dirname;
+  const app = JSON.parse(fs.readFileSync(path.join(root, 'app.operatorx.json'), 'utf8'));
+  const toolchain = JSON.parse(fs.readFileSync(path.join(root, '.operatorx', 'toolchain.json'), 'utf8'));
+  const iapKitKey = process.env.EXPO_PUBLIC_IAPKIT_API_KEY || '';
+
+  if (iapKitKey && !iapKitKey.startsWith('openiap-kit_pk_')) {
+    throw new Error('EXPO_PUBLIC_IAPKIT_API_KEY must be an IAPKit publishable key (openiap-kit_pk_), never a secret key.');
   }
+
   return {
-    ...raw,
-    extra: {
-      ...((raw && raw.extra) || {}),
-      eas: {
-        ...((raw && raw.extra && raw.extra.eas) || {}),
-        projectId: PROJECT_ID,
+    expo: {
+      name: app.name,
+      slug: app.slug,
+      owner: 'operatorx',
+      version: app.version,
+      orientation: 'portrait',
+      userInterfaceStyle: 'light',
+      icon: './assets/icon.png',
+      splash: {
+        image: './assets/splash.png',
+        resizeMode: 'contain',
+        backgroundColor: '#F6F7F8'
       },
-    },
+      ios: {
+        bundleIdentifier: app.bundleId,
+        buildNumber: String(app.build),
+        supportsTablet: Boolean(app.apple?.ipad),
+        infoPlist: {
+          ITSAppUsesNonExemptEncryption: false,
+          CFBundleLocalizations: ['fr', 'en'],
+          CFBundleDevelopmentRegion: 'en'
+        }
+      },
+      plugins: [
+        ['expo-iap', iapKitKey ? { iapkitApiKey: iapKitKey } : {}],
+        ['expo-image-picker', {
+          photosPermission: 'OX Invoice accesses your photo library only when you choose a business logo.',
+          cameraPermission: false,
+          microphonePermission: false
+        }],
+        ['expo-build-properties', { ios: { deploymentTarget: '16.4' } }]
+      ],
+      extra: {
+        operatorX: true,
+        expoSdk: toolchain.expoSdk,
+        eas: {
+          projectId: app.eas.projectId
+        },
+        iapkitApiKey: iapKitKey || undefined,
+        privacyUrl: app.website?.privacyUrl || '',
+        supportUrl: app.website?.supportUrl || '',
+        termsUrl: app.website?.termsUrl || ''
+      }
+    }
   };
 };
