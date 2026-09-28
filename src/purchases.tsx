@@ -44,10 +44,12 @@ export function PurchaseProvider({ children, onEntitlement }: { children: React.
     // The authoritative IAPKit response does not expose productId. The product
     // identity is already bound to the StoreKit JWS we send for verification,
     // and purchase.productId is allow-listed before this call.
+    const verifiedProductId = (verified as (typeof verified & { productId?: string | null }))?.productId;
     return Boolean(
       verified?.isValid === true &&
       verified.state === 'entitled' &&
-      verified.store === (Platform.OS === 'ios' ? 'apple' : 'google')
+      verified.store === (Platform.OS === 'ios' ? 'apple' : 'google') &&
+      (!verifiedProductId || verifiedProductId === purchase.productId)
     );
   }, [iapKitKey, verificationConfigured]);
 
