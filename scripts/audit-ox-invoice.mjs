@@ -21,7 +21,7 @@ add('Authoritative current entitlement restore',purchase.includes('onlyIncludeAc
 add('Native restore sync before entitlement refresh',purchase.includes('restorePurchases({ onlyIncludeActiveItemsIOS: true })'));
 add('Server verification before entitlement',purchase.includes('verifyPurchaseWithProvider') && purchase.indexOf('verifyStorePurchase(purchase)') < purchase.indexOf('onEntitlement(true)'));
 add('Finish transaction only after verified entitlement',purchase.indexOf('onEntitlement(true)') < purchase.indexOf('finishTransaction({ purchase, isConsumable: false })'));
-add('IAPKit product identity guarded when returned',purchase.includes('verifiedProductId') && purchase.includes('verifiedProductId === purchase.productId'));
+add('Store-verified IAP product identity required',purchase.includes('verified.productId != null') && purchase.includes('verified.productId === purchase.productId'));
 for(const id of ['com.operatorx.oxinvoice.pro.6months','com.operatorx.oxinvoice.pro.yearly']) add(`IAP product ${id}`,purchase.includes(id));
 const appSource=read('App.tsx');
 add('Business setup gate before first document',appSource.includes('business.name.trim()') && appSource.includes("type: 'business'"));
