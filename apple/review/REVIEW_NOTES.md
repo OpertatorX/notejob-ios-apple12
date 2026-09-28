@@ -50,7 +50,7 @@ Business settings:
 OX Invoice generates local PDF estimates/invoices and does not claim to replace regulated French e-invoicing platforms where structured electronic invoicing is legally required. The French Terms and App Store description state this explicitly.
 
 ## In-app purchases
-OX Invoice is free to download. The first 3 created documents are free. After that, creating another document opens the OX Invoice Pro paywall. While active, Pro provides ongoing unlimited document creation, all PDF styles, purchase restoration across the user's Apple devices, and ongoing maintenance/feature updates.
+OX Invoice is free to download. The first 3 created documents are free. After that, creating another document opens the OX Invoice Pro paywall. While active, Pro provides ongoing unlimited estimate and invoice creation. The subscription entitlement is restored through the App Store on the user's Apple devices, and the app revalidates active entitlement state through IAPKit.
 
 Auto-renewable subscription product IDs:
 - `com.operatorx.oxinvoice.pro.6months`
