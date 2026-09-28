@@ -1,0 +1,231 @@
+﻿release	Set up job	´╗┐2026-09-28T11:43:56.8888640Z Current runner version: '2.337.0'
+release	Set up job	2026-09-28T11:43:56.8903030Z ##[group]Runner Image Provisioner
+release	Set up job	2026-09-28T11:43:56.8903580Z Hosted Compute Agent
+release	Set up job	2026-09-28T11:43:56.8903950Z Version: 20260828.587
+release	Set up job	2026-09-28T11:43:56.8904360Z Commit: abac92662cab4cc7352de4f9f9d2e2419aad9c29
+release	Set up job	2026-09-28T11:43:56.8904840Z Build Date: 2026-08-28T16:44:25Z
+release	Set up job	2026-09-28T11:43:56.8905280Z Worker ID: {0671b5fc-732d-45ee-87ca-0732091a6d68}
+release	Set up job	2026-09-28T11:43:56.8905740Z Azure Region: westus
+release	Set up job	2026-09-28T11:43:56.8906100Z ##[endgroup]
+release	Set up job	2026-09-28T11:43:56.8906920Z ##[group]Operating System
+release	Set up job	2026-09-28T11:43:56.8907320Z macOS
+release	Set up job	2026-09-28T11:43:56.8907650Z 26.6.2
+release	Set up job	2026-09-28T11:43:56.8907970Z 25G83
+release	Set up job	2026-09-28T11:43:56.8908310Z ##[endgroup]
+release	Set up job	2026-09-28T11:43:56.8908670Z ##[group]Runner Image
+release	Set up job	2026-09-28T11:43:56.8909080Z Image: macos-26-arm64
+release	Set up job	2026-09-28T11:43:56.8909470Z Version: 20260907.0351.1
+release	Set up job	2026-09-28T11:43:56.8910230Z Included Software: https://github.com/actions/runner-images/blob/macos-26-arm64/20260907.0351/images/macos/macos-26-arm64-Readme.md
+release	Set up job	2026-09-28T11:43:56.8911360Z Image Release: https://github.com/actions/runner-images/releases/tag/macos-26-arm64%2F20260907.0351
+release	Set up job	2026-09-28T11:43:56.8912020Z ##[endgroup]
+release	Set up job	2026-09-28T11:43:56.8912830Z ##[group]GITHUB_TOKEN Permissions
+release	Set up job	2026-09-28T11:43:56.8913810Z Actions: read
+release	Set up job	2026-09-28T11:43:56.8914200Z Contents: read
+release	Set up job	2026-09-28T11:43:56.8914570Z Metadata: read
+release	Set up job	2026-09-28T11:43:56.8914940Z ##[endgroup]
+release	Set up job	2026-09-28T11:43:56.8916210Z Secret source: Actions
+release	Set up job	2026-09-28T11:43:56.8916830Z Cache mode: write
+release	Set up job	2026-09-28T11:43:56.8917300Z Prepare workflow directory
+release	Set up job	2026-09-28T11:43:56.9246480Z Prepare all required actions
+release	Set up job	2026-09-28T11:43:56.9280320Z Getting action download info
+release	Set up job	2026-09-28T11:43:57.2023590Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+release	Set up job	2026-09-28T11:43:57.3874950Z Download action repository 'actions/setup-node@v4' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)
+release	Set up job	2026-09-28T11:43:57.4740060Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+release	Set up job	2026-09-28T11:43:57.6532300Z Complete job name: release
+release	Checkout OX Invoice source branch	´╗┐2026-09-28T11:43:57.6913560Z ##[group]Run actions/checkout@v4
+release	Checkout OX Invoice source branch	2026-09-28T11:43:57.6914120Z with:
+release	Checkout OX Invoice source branch	2026-09-28T11:43:57.6914440Z   ref: ox-invoice-release
+release	Checkout OX Invoice source branch	2026-09-28T11:43:57.6914830Z   repository: OpertatorX/notejob-ios-apple12
+release	Checkout OX Invoice source branch	2026-09-28T11:43:57.6917620Z   token: ***
+release	Checkout OX Invoice source branch	2026-09-28T11:43:57.6917940Z   ssh-strict: true
+release	Checkout OX Invoice source branch	2026-09-28T11:43:57.6918260Z   ssh-user: git
+release	Checkout OX Invoice source branch	2026-09-28T11:43:57.6918580Z   persist-credentials: true
+release	Checkout OX Invoice source branch	2026-09-28T11:43:57.6918940Z   clean: true
+release	Checkout OX Invoice source branch	2026-09-28T11:43:57.6919260Z   sparse-checkout-cone-mode: true
+release	Checkout OX Invoice source branch	2026-09-28T11:43:57.6919640Z   fetch-depth: 1
+release	Checkout OX Invoice source branch	2026-09-28T11:43:57.6919950Z   fetch-tags: false
+release	Checkout OX Invoice source branch	2026-09-28T11:43:57.6920280Z   show-progress: true
+release	Checkout OX Invoice source branch	2026-09-28T11:43:57.6920610Z   lfs: false
+release	Checkout OX Invoice source branch	2026-09-28T11:43:57.6920920Z   submodules: false
+release	Checkout OX Invoice source branch	2026-09-28T11:43:57.6921250Z   set-safe-directory: true
+release	Checkout OX Invoice source branch	2026-09-28T11:43:57.6921620Z   allow-unsafe-pr-checkout: false
+release	Checkout OX Invoice source branch	2026-09-28T11:43:57.6922100Z env:
+release	Checkout OX Invoice source branch	2026-09-28T11:43:57.6922530Z   EXPO_TOKEN: ***
+release	Checkout OX Invoice source branch	2026-09-28T11:43:57.6923120Z   EXPO_PUBLIC_IAPKIT_API_KEY: ***
+release	Checkout OX Invoice source branch	2026-09-28T11:43:57.6923510Z   EXPO_PUBLIC_APP_ENV: production
+release	Checkout OX Invoice source branch	2026-09-28T11:43:57.6923910Z ##[endgroup]
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.0238040Z Syncing repository: OpertatorX/notejob-ios-apple12
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.0239540Z ##[group]Getting Git version info
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.0240140Z Working directory is '/Users/runner/work/notejob-ios-apple12/notejob-ios-apple12'
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.0241000Z [command]/opt/homebrew/bin/git version
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.0721540Z git version 2.55.0
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.0732350Z ##[endgroup]
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.0738320Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/d7dec778-aa37-4b40-bd6a-87fc459bbd6e/.gitconfig'
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.0745370Z Temporarily overriding HOME='/Users/runner/work/_temp/d7dec778-aa37-4b40-bd6a-87fc459bbd6e' before making global git config changes
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.0746400Z Adding repository directory to the temporary git global config as a safe directory
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.0748930Z [command]/opt/homebrew/bin/git config --global --add safe.directory /Users/runner/work/notejob-ios-apple12/notejob-ios-apple12
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.0851420Z Deleting the contents of '/Users/runner/work/notejob-ios-apple12/notejob-ios-apple12'
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.0853910Z ##[group]Initializing the repository
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.0858320Z [command]/opt/homebrew/bin/git init /Users/runner/work/notejob-ios-apple12/notejob-ios-apple12
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.1059290Z hint: Using 'master' as the name for the initial branch. This default branch name
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.1060300Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.1061060Z hint: to use in all of your new repositories, which will suppress this warning,
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.1061730Z hint: call:
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.1062160Z hint:
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.1062620Z hint: 	git config --global init.defaultBranch <name>
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.1063120Z hint:
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.1063670Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.1064540Z hint: 'development'. The just-created branch can be renamed via this command:
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.1065340Z hint:
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.1065750Z hint: 	git branch -m <name>
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.1066120Z hint:
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.1066690Z hint: Disable this message with "git config set advice.defaultBranchName false"
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.1067540Z Initialized empty Git repository in /Users/runner/work/notejob-ios-apple12/notejob-ios-apple12/.git/
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.1070260Z [command]/opt/homebrew/bin/git remote add origin https://github.com/OpertatorX/notejob-ios-apple12
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.1148220Z ##[endgroup]
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.1148970Z ##[group]Disabling automatic garbage collection
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.1151030Z [command]/opt/homebrew/bin/git config --local gc.auto 0
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.1217070Z ##[endgroup]
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.1217790Z ##[group]Setting up auth
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.1221940Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.1287430Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.2418790Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.2480130Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.3199140Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.3260130Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.4042400Z [command]/opt/homebrew/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.4176850Z ##[endgroup]
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.4177620Z ##[group]Fetching the repository
+release	Checkout OX Invoice source branch	2026-09-28T11:43:58.4181570Z [command]/opt/homebrew/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +refs/heads/ox-invoice-release*:refs/remotes/origin/ox-invoice-release* +refs/tags/ox-invoice-release*:refs/tags/ox-invoice-release*
+release	Checkout OX Invoice source branch	2026-09-28T11:43:59.4479000Z From https://github.com/OpertatorX/notejob-ios-apple12
+release	Checkout OX Invoice source branch	2026-09-28T11:43:59.4480470Z  * [new branch]      ox-invoice-release -> origin/ox-invoice-release
+release	Checkout OX Invoice source branch	2026-09-28T11:43:59.4546120Z ##[endgroup]
+release	Checkout OX Invoice source branch	2026-09-28T11:43:59.4547130Z ##[group]Determining the checkout info
+release	Checkout OX Invoice source branch	2026-09-28T11:43:59.4550380Z [command]/opt/homebrew/bin/git branch --list --remote origin/ox-invoice-release
+release	Checkout OX Invoice source branch	2026-09-28T11:43:59.4579410Z   origin/ox-invoice-release
+release	Checkout OX Invoice source branch	2026-09-28T11:43:59.4626070Z ##[endgroup]
+release	Checkout OX Invoice source branch	2026-09-28T11:43:59.4626870Z [command]/opt/homebrew/bin/git sparse-checkout disable
+release	Checkout OX Invoice source branch	2026-09-28T11:43:59.4669060Z [command]/opt/homebrew/bin/git config --local --unset-all extensions.worktreeConfig
+release	Checkout OX Invoice source branch	2026-09-28T11:43:59.4738060Z ##[group]Checking out the ref
+release	Checkout OX Invoice source branch	2026-09-28T11:43:59.4739620Z [command]/opt/homebrew/bin/git checkout --progress --force -B ox-invoice-release refs/remotes/origin/ox-invoice-release
+release	Checkout OX Invoice source branch	2026-09-28T11:43:59.4972150Z Switched to a new branch 'ox-invoice-release'
+release	Checkout OX Invoice source branch	2026-09-28T11:43:59.4975450Z branch 'ox-invoice-release' set up to track 'origin/ox-invoice-release'.
+release	Checkout OX Invoice source branch	2026-09-28T11:43:59.4980060Z ##[endgroup]
+release	Checkout OX Invoice source branch	2026-09-28T11:43:59.5469580Z [command]/opt/homebrew/bin/git log -1 --format=%H
+release	Checkout OX Invoice source branch	2026-09-28T11:43:59.5542930Z d1f498145b7a5ec8ea4aa32b7c757d3809f99d12
+release	Run actions/setup-node@v4	´╗┐2026-09-28T11:43:59.5997470Z ##[group]Run actions/setup-node@v4
+release	Run actions/setup-node@v4	2026-09-28T11:43:59.5998320Z with:
+release	Run actions/setup-node@v4	2026-09-28T11:43:59.5998890Z   node-version: 24
+release	Run actions/setup-node@v4	2026-09-28T11:43:59.5999500Z   cache: npm
+release	Run actions/setup-node@v4	2026-09-28T11:43:59.6000090Z   always-auth: false
+release	Run actions/setup-node@v4	2026-09-28T11:43:59.6000730Z   check-latest: false
+release	Run actions/setup-node@v4	2026-09-28T11:43:59.6007390Z   token: ***
+release	Run actions/setup-node@v4	2026-09-28T11:43:59.6007960Z env:
+release	Run actions/setup-node@v4	2026-09-28T11:43:59.6008660Z   EXPO_TOKEN: ***
+release	Run actions/setup-node@v4	2026-09-28T11:43:59.6009940Z   EXPO_PUBLIC_IAPKIT_API_KEY: ***
+release	Run actions/setup-node@v4	2026-09-28T11:43:59.6010720Z   EXPO_PUBLIC_APP_ENV: production
+release	Run actions/setup-node@v4	2026-09-28T11:43:59.6011490Z ##[endgroup]
+release	Run actions/setup-node@v4	2026-09-28T11:43:59.7612100Z Found in cache @ /Users/runner/hostedtoolcache/node/24.20.0/arm64
+release	Run actions/setup-node@v4	2026-09-28T11:43:59.7615830Z (node:1169) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+release	Run actions/setup-node@v4	2026-09-28T11:43:59.7617920Z (Use `node --trace-deprecation ...` to show where the warning was created)
+release	Run actions/setup-node@v4	2026-09-28T11:43:59.7619650Z ##[group]Environment details
+release	Run actions/setup-node@v4	2026-09-28T11:44:00.4134210Z node: v24.20.0
+release	Run actions/setup-node@v4	2026-09-28T11:44:00.4135090Z npm: 11.19.0
+release	Run actions/setup-node@v4	2026-09-28T11:44:00.4135500Z yarn: 1.22.22
+release	Run actions/setup-node@v4	2026-09-28T11:44:00.4136260Z ##[endgroup]
+release	Run actions/setup-node@v4	2026-09-28T11:44:00.4150020Z [command]/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/npm config get cache
+release	Run actions/setup-node@v4	2026-09-28T11:44:00.5921970Z /Users/runner/.npm
+release	Run actions/setup-node@v4	2026-09-28T11:44:00.8049580Z npm cache is not found
+release	Select proven Xcode	´╗┐2026-09-28T11:44:00.8151710Z ##[group]Run set -euo pipefail
+release	Select proven Xcode	2026-09-28T11:44:00.8152040Z ^[[36;1mset -euo pipefail^[[0m
+release	Select proven Xcode	2026-09-28T11:44:00.8152360Z ^[[36;1mXCODE='/Applications/Xcode_26.4.1.app/Contents/Developer'^[[0m
+release	Select proven Xcode	2026-09-28T11:44:00.8152680Z ^[[36;1mtest -d "$XCODE"^[[0m
+release	Select proven Xcode	2026-09-28T11:44:00.8152930Z ^[[36;1msudo xcode-select -s "$XCODE"^[[0m
+release	Select proven Xcode	2026-09-28T11:44:00.8153190Z ^[[36;1mxcodebuild -version^[[0m
+release	Select proven Xcode	2026-09-28T11:44:00.8193620Z shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+release	Select proven Xcode	2026-09-28T11:44:00.8194050Z env:
+release	Select proven Xcode	2026-09-28T11:44:00.8194550Z   EXPO_TOKEN: ***
+release	Select proven Xcode	2026-09-28T11:44:00.8195040Z   EXPO_PUBLIC_IAPKIT_API_KEY: ***
+release	Select proven Xcode	2026-09-28T11:44:00.8195320Z   EXPO_PUBLIC_APP_ENV: production
+release	Select proven Xcode	2026-09-28T11:44:00.8195560Z ##[endgroup]
+release	Select proven Xcode	2026-09-28T11:44:02.9835900Z Xcode 26.4.1
+release	Select proven Xcode	2026-09-28T11:44:02.9851930Z Build version 17E202
+release	Install dependencies	´╗┐2026-09-28T11:44:02.9885130Z ##[group]Run set -euo pipefail
+release	Install dependencies	2026-09-28T11:44:02.9885390Z ^[[36;1mset -euo pipefail^[[0m
+release	Install dependencies	2026-09-28T11:44:02.9885660Z ^[[36;1mif [[ -f package-lock.json ]]; then npm ci; else npm install; fi^[[0m
+release	Install dependencies	2026-09-28T11:44:02.9915950Z shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+release	Install dependencies	2026-09-28T11:44:02.9916250Z env:
+release	Install dependencies	2026-09-28T11:44:02.9916540Z   EXPO_TOKEN: ***
+release	Install dependencies	2026-09-28T11:44:02.9916940Z   EXPO_PUBLIC_IAPKIT_API_KEY: ***
+release	Install dependencies	2026-09-28T11:44:02.9917180Z   EXPO_PUBLIC_APP_ENV: production
+release	Install dependencies	2026-09-28T11:44:02.9917380Z ##[endgroup]
+release	Install dependencies	2026-09-28T11:44:06.4324820Z npm warn deprecated uuid@7.0.3: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
+release	Install dependencies	2026-09-28T11:44:12.3238580Z 
+release	Install dependencies	2026-09-28T11:44:12.3240810Z added 474 packages, and audited 475 packages in 9s
+release	Install dependencies	2026-09-28T11:44:12.3241220Z 
+release	Install dependencies	2026-09-28T11:44:12.3241480Z 45 packages are looking for funding
+release	Install dependencies	2026-09-28T11:44:12.3241870Z   run `npm fund` for details
+release	Install dependencies	2026-09-28T11:44:12.3563200Z 
+release	Install dependencies	2026-09-28T11:44:12.3564100Z 11 moderate severity vulnerabilities
+release	Install dependencies	2026-09-28T11:44:12.3571720Z 
+release	Install dependencies	2026-09-28T11:44:12.3572180Z To address all issues (including breaking changes), run:
+release	Install dependencies	2026-09-28T11:44:12.3572620Z   npm audit fix --force
+release	Install dependencies	2026-09-28T11:44:12.3572870Z 
+release	Install dependencies	2026-09-28T11:44:12.3573060Z Run `npm audit` for details.
+release	Resolve or create EAS project without local Expo login	´╗┐2026-09-28T11:44:12.4474410Z ##[group]Run set -euo pipefail
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:12.4474940Z ^[[36;1mset -euo pipefail^[[0m
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:12.4475510Z ^[[36;1mtest -n "${EXPO_TOKEN:-}" || { echo 'EXPO_TOKEN missing in credential-host repository'; exit 20; }^[[0m
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:12.4476330Z ^[[36;1mtest -n "${EXPO_PUBLIC_IAPKIT_API_KEY:-}" || { echo 'OX_INVOICE_IAPKIT_KEY missing in credential-host repository'; exit 21; }^[[0m
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:12.4477180Z ^[[36;1mcp app.config.js app.config.runtime.js^[[0m
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:12.4477560Z ^[[36;1mrestore_config(){^[[0m
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:12.4477800Z ^[[36;1m  rm -f app.json^[[0m
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:12.4478250Z ^[[36;1m  if [[ -f app.config.runtime.js ]]; then mv -f app.config.runtime.js app.config.js; fi^[[0m
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:12.4478700Z ^[[36;1m}^[[0m
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:12.4478930Z ^[[36;1mtrap restore_config EXIT^[[0m
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:12.4479260Z ^[[36;1mnode <<'NODE'^[[0m
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:12.4479540Z ^[[36;1mconst fs=require('fs');^[[0m
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:12.4479970Z ^[[36;1mconst a=JSON.parse(fs.readFileSync('app.operatorx.json','utf8'));^[[0m
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:12.4480740Z ^[[36;1mconst cfg={expo:{name:a.name,slug:a.slug,owner:'operatorx',version:a.version,ios:{bundleIdentifier:a.bundleId,buildNumber:String(a.build)}}};^[[0m
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:12.4481450Z ^[[36;1mfs.writeFileSync('app.json',JSON.stringify(cfg,null,2)+'\\n');^[[0m
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:12.4481790Z ^[[36;1mNODE^[[0m
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:12.4482200Z ^[[36;1mnpx --yes eas-cli@latest project:init --account operatorx --force --non-interactive^[[0m
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:12.4482890Z ^[[36;1mEAS_PROJECT_ID="$(node -e "const j=require('./app.json'); process.stdout.write(j.expo?.extra?.eas?.projectId || '')")"^[[0m
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:12.4483540Z ^[[36;1mtest -n "$EAS_PROJECT_ID" || { echo 'EAS project ID was not written by project:init'; exit 22; }^[[0m
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:12.4484010Z ^[[36;1mrestore_config^[[0m
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:12.4484310Z ^[[36;1mtrap - EXIT^[[0m
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:12.4484660Z ^[[36;1mecho "EAS_PROJECT_ID=$EAS_PROJECT_ID" >> "$GITHUB_ENV"^[[0m
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:12.4485100Z ^[[36;1mecho "EAS project: $EAS_PROJECT_ID"^[[0m
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:12.4532350Z shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:12.4532700Z env:
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:12.4533140Z   EXPO_TOKEN: ***
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:12.4533640Z   EXPO_PUBLIC_IAPKIT_API_KEY: ***
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:12.4533950Z   EXPO_PUBLIC_APP_ENV: production
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:12.4534290Z ##[endgroup]
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:26.8031820Z npm warn deprecated inflight@1.0.6: This module is not supported, and leaks memory. Do not use it. Check out lru-cache if you want a good and tested way to coalesce async requests by a key value, which is much more comprehensive and powerful.
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:26.9987010Z npm warn deprecated rimraf@2.4.5: Rimraf versions prior to v4 are no longer supported
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:27.5885620Z npm warn deprecated glob@6.0.4: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:28.2429110Z npm warn deprecated uuid@7.0.3: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:28.6367880Z npm warn deprecated uuid@8.3.2: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:28.6900260Z npm warn deprecated uuid@8.3.2: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:28.8874310Z npm warn deprecated glob@10.5.0: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:28.8962150Z npm warn deprecated glob@10.5.0: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:44.1583600Z /Users/runner/work/notejob-ios-apple12/notejob-ios-apple12/node_modules/expo/bin/cli config --json exited with non-zero code: 1
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:44.5004960Z     Error: project:init command failed.
+release	Resolve or create EAS project without local Expo login	2026-09-28T11:44:44.5440440Z ##[error]Process completed with exit code 1.
+release	Post Checkout OX Invoice source branch	´╗┐2026-09-28T11:44:44.5651390Z Post job cleanup.
+release	Post Checkout OX Invoice source branch	2026-09-28T11:44:44.8998770Z [command]/opt/homebrew/bin/git version
+release	Post Checkout OX Invoice source branch	2026-09-28T11:44:44.9079520Z git version 2.55.0
+release	Post Checkout OX Invoice source branch	2026-09-28T11:44:44.9118500Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/ab368178-96ff-47dd-a92f-fa5cbc88afcb/.gitconfig'
+release	Post Checkout OX Invoice source branch	2026-09-28T11:44:44.9119940Z Temporarily overriding HOME='/Users/runner/work/_temp/ab368178-96ff-47dd-a92f-fa5cbc88afcb' before making global git config changes
+release	Post Checkout OX Invoice source branch	2026-09-28T11:44:44.9120810Z Adding repository directory to the temporary git global config as a safe directory
+release	Post Checkout OX Invoice source branch	2026-09-28T11:44:44.9121800Z [command]/opt/homebrew/bin/git config --global --add safe.directory /Users/runner/work/notejob-ios-apple12/notejob-ios-apple12
+release	Post Checkout OX Invoice source branch	2026-09-28T11:44:44.9227960Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+release	Post Checkout OX Invoice source branch	2026-09-28T11:44:44.9300730Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+release	Post Checkout OX Invoice source branch	2026-09-28T11:44:45.0605180Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+release	Post Checkout OX Invoice source branch	2026-09-28T11:44:45.0676710Z http.https://github.com/.extraheader
+release	Post Checkout OX Invoice source branch	2026-09-28T11:44:45.0686090Z [command]/opt/homebrew/bin/git config --local --unset-all http.https://github.com/.extraheader
+release	Post Checkout OX Invoice source branch	2026-09-28T11:44:45.0772490Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+release	Post Checkout OX Invoice source branch	2026-09-28T11:44:45.2115670Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+release	Post Checkout OX Invoice source branch	2026-09-28T11:44:45.2230860Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+release	Complete job	´╗┐2026-09-28T11:44:45.3912480Z Cleaning up orphan processes
+release	Complete job	2026-09-28T11:44:45.5569280Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

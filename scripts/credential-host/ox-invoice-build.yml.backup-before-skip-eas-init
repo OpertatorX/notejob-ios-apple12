@@ -1,4 +1,4 @@
-﻿name: OX Invoice BLINK credential-host release
+name: OX Invoice BLINK credential-host release
 on:
   workflow_dispatch:
     inputs:
@@ -91,4 +91,3 @@ jobs:
         run: |
           set -euo pipefail
           npx --yes eas-cli@latest submit --platform ios --profile production --path ./artifacts/OX-Invoice-1.0-build1.ipa --non-interactive
-

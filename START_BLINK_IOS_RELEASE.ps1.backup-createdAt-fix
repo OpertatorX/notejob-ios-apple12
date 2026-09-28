@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 Set-StrictMode -Version Latest
 
@@ -113,7 +113,7 @@ $runJson=& gh run list --repo $CredentialHost --workflow $WorkflowName --event w
 if($LASTEXITCODE -ne 0){ throw 'Unable to list credential-host workflow runs.' }
 $runs=@($runJson | ConvertFrom-Json)
 if(-not $runs -or $runs.Count -lt 1){ throw 'GitHub build run not found.' }
-$run=$runs | Sort-Object {$_.createdAt} -Descending | Select-Object -First 1
+$run=$runs | Sort-Object {[DateTimeOffset]::Parse($_.createdAt)} -Descending | Select-Object -First 1
 $runId=[string]$run.databaseId
 Write-Host "Build: $($run.url)" -ForegroundColor Cyan
 
@@ -145,4 +145,3 @@ Write-Host "EXPO_TOKEN reused from: $CredentialHost" -ForegroundColor Green
 Write-Host 'No Expo token was entered or copied locally.' -ForegroundColor Green
 Write-Host '============================================================' -ForegroundColor Green
 if($ipa){ Write-Host "IPA: $($ipa.FullName)" -ForegroundColor Cyan }
-
