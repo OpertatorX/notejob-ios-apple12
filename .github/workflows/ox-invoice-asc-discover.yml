@@ -1,0 +1,76 @@
+name: OX Invoice ASC Discover
+on:
+  push:
+    paths:
+      - .github/workflows/ox-invoice-asc-discover.yml
+permissions:
+  contents: read
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check ASC secrets and discover app
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          for v in ASC_KEY_ID ASC_ISSUER_ID ASC_API_KEY_BASE64; do
+            if [[ -z "${!v:-}" ]]; then
+              echo "$v=MISSING"
+              missing=1
+            else
+              echo "$v=PRESENT"
+            fi
+          done
+          if [[ "$missing" -ne 0 ]]; then
+            echo "ASC_SECRETS_STATUS=MISSING"
+            exit 20
+          fi
+          python3 -m pip install --quiet pyjwt cryptography requests
+          python3 - <<'PY'
+          import os, base64, time, json, sys
+          import jwt, requests
+
+          key_id=os.environ["ASC_KEY_ID"]
+          issuer=os.environ["ASC_ISSUER_ID"]
+          raw=os.environ["ASC_API_KEY_BASE64"]
+          try:
+              key=base64.b64decode(raw).decode("utf-8")
+          except Exception:
+              key=raw
+          token=jwt.encode(
+              {"iss":issuer,"iat":int(time.time()),"exp":int(time.time())+900,"aud":"appstoreconnect-v1"},
+              key,
+              algorithm="ES256",
+              headers={"kid":key_id,"typ":"JWT"},
+          )
+          headers={"Authorization":f"Bearer {token}"}
+          params={"filter[bundleId]":"com.operatorx.oxinvoice","limit":"10"}
+          r=requests.get("https://api.appstoreconnect.apple.com/v1/apps",headers=headers,params=params,timeout=30)
+          print("ASC_HTTP_STATUS="+str(r.status_code))
+          if r.status_code != 200:
+              print("ASC_API_ERROR")
+              try:
+                  body=r.json()
+                  for e in body.get("errors",[])[:3]:
+                      print("ASC_ERROR_CODE="+str(e.get("code","")))
+                      print("ASC_ERROR_TITLE="+str(e.get("title","")))
+              except Exception:
+                  pass
+              sys.exit(21)
+          data=r.json().get("data",[])
+          if not data:
+              print("ASC_APP_STATUS=NOT_FOUND")
+              sys.exit(0)
+          app=data[0]
+          print("ASC_APP_STATUS=FOUND")
+          print("ASC_APP_ID="+app["id"])
+          attrs=app.get("attributes",{})
+          print("ASC_APP_NAME="+str(attrs.get("name","")))
+          print("ASC_BUNDLE_ID="+str(attrs.get("bundleId","")))
+          PY
