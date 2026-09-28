@@ -1,0 +1,21 @@
+import React, { useMemo, useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import type { AppData, DocumentKind, QuoteDocument } from '../types';
+import { calculateTotals, effectiveStatus, formatMoney } from '../domain';
+import { localeFor, tr } from '../i18n';
+import { Card, Pill, PrimaryButton, ScreenTitle } from '../ui';
+import { colors, radii } from '../theme';
+
+export function DocumentsScreen({ data, onCreate, onOpen }: { data:AppData; onCreate:(kind:DocumentKind)=>void; onOpen:(id:string)=>void }) {
+  const lang=data.business.language; const [filter,setFilter]=useState<'all'|'estimate'|'invoice'>('all'); const [query,setQuery]=useState('');
+  const docs=useMemo(()=>[...data.documents].filter(d=>filter==='all'||d.kind===filter).filter(d=>`${d.number} ${d.client.name}`.toLowerCase().includes(query.trim().toLowerCase())).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)),[data.documents,filter,query]);
+  const status=(d:QuoteDocument)=>{const value=effectiveStatus(d);return value==='paid'?tr(lang,'statusPaid'):value==='overdue'?tr(lang,'statusOverdue'):value==='accepted'?tr(lang,'accepted'):value==='sent'?tr(lang,'sent'):tr(lang,'draft');};
+  const tone=(d:QuoteDocument)=>{const value=effectiveStatus(d);return value==='paid'||value==='accepted'?'green':value==='overdue'?'red':value==='sent'?'blue':'neutral' as const;};
+  return <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <ScreenTitle title={tr(lang,'documents')} action={<PrimaryButton compact title="＋" onPress={()=>Alert.alert('OX Invoice',lang==='fr'?'Nouveau document':'New document',[{text:tr(lang,'newEstimate'),onPress:()=>onCreate('estimate')},{text:tr(lang,'newInvoice'),onPress:()=>onCreate('invoice')},{text:lang==='fr'?'Annuler':'Cancel',style:'cancel'}])}/>}/>
+    <View style={styles.filters}>{([['all',tr(lang,'all')],['estimate',tr(lang,'estimates')],['invoice',tr(lang,'invoices')]] as const).map(([k,label])=><Pressable key={k} onPress={()=>setFilter(k)} style={[styles.filter,filter===k&&styles.filterActive]}><Text style={[styles.filterText,filter===k&&styles.filterTextActive]}>{label}</Text></Pressable>)}</View>
+    <View style={styles.search}><TextInput value={query} onChangeText={setQuery} placeholder={tr(lang,'searchDocs')} placeholderTextColor={colors.faint} style={styles.searchInput}/></View>
+    {docs.length===0?<Card><Text style={styles.empty}>{tr(lang,'noDocs')}</Text></Card>:<Card style={{padding:0}}>{docs.map((d,i)=><Pressable key={d.id} onPress={()=>onOpen(d.id)} style={[styles.row,i>0&&styles.border]}><View style={[styles.icon,{backgroundColor:d.kind==='invoice'?colors.blueSoft:'#EEF7F2'}]}><Text style={{fontWeight:'900',color:d.kind==='invoice'?colors.blue:colors.green}}>{d.kind==='invoice'?'I':'E'}</Text></View><View style={{flex:1,minWidth:0}}><Text numberOfLines={1} style={styles.name}>{d.client.name||d.number}</Text><Text style={styles.meta}>{d.number} · {d.issueDate}</Text></View><View style={{alignItems:'flex-end',gap:5}}><Text style={styles.amount}>{formatMoney(calculateTotals(d).total,data.business.currency,localeFor(lang))}</Text><Pill text={status(d)} tone={tone(d)}/></View></Pressable>)}</Card>}
+  </ScrollView>
+}
+const styles=StyleSheet.create({content:{padding:20,paddingBottom:110,maxWidth:720,width:'100%',alignSelf:'center'},filters:{flexDirection:'row',backgroundColor:colors.soft,borderRadius:12,padding:4,gap:4},filter:{flex:1,paddingVertical:9,alignItems:'center',borderRadius:9},filterActive:{backgroundColor:colors.navy},filterText:{fontSize:12,fontWeight:'700',color:colors.muted},filterTextActive:{color:'#fff'},search:{marginTop:12,borderWidth:1,borderColor:colors.line,borderRadius:radii.md,backgroundColor:'#fff'},searchInput:{paddingHorizontal:14,paddingVertical:12,fontSize:14,color:colors.ink},empty:{fontSize:15,color:colors.muted},row:{minHeight:76,padding:14,flexDirection:'row',alignItems:'center',gap:11},border:{borderTopWidth:1,borderTopColor:colors.line},icon:{width:36,height:36,borderRadius:10,alignItems:'center',justifyContent:'center'},name:{fontSize:14,fontWeight:'800',color:colors.ink},meta:{fontSize:11.5,color:colors.muted,marginTop:4},amount:{fontSize:13,fontWeight:'800',color:colors.ink}});

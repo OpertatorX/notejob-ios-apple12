@@ -1,0 +1,147 @@
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+Set-StrictMode -Version Latest
+
+function Step([string]$Message){ Write-Host ''; Write-Host "=== $Message ===" -ForegroundColor Cyan }
+function Run-Checked([string]$Exe,[string[]]$Arguments){ & $Exe @Arguments; $code=$LASTEXITCODE; if($code -ne 0){ throw "$Exe failed (exit $code)" } }
+function Read-Secret([string]$Prompt){
+  $secure = Read-Host $Prompt -AsSecureString
+  $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+  try { return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr) }
+  finally { if($ptr -ne [IntPtr]::Zero){ [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) } }
+}
+
+$Root = Split-Path -Parent $MyInvocation.MyCommand.Path
+Set-Location $Root
+$SourceRepo='OpertatorX/ox-invoice-ios'
+$SourceBranch='main'
+$HostBranch='ox-invoice-release'
+$WorkflowName='ox-invoice-credential-host.yml'
+$HostCandidates=@('OpertatorX/notejob-ios-apple12','OpertatorX/blink-reflex-ios')
+
+Step 'BLINK METHOD - REUSE EXISTING EXPO TOKEN'
+Write-Host 'No EXPO_TOKEN entry is requested locally.' -ForegroundColor Green
+Write-Host 'The script reuses an existing GitHub repository that already owns EXPO_TOKEN.' -ForegroundColor Green
+
+Step 'GitHub authentication'
+if(-not (Get-Command gh -ErrorAction SilentlyContinue)){ throw 'GitHub CLI (gh) is required.' }
+& gh auth status --hostname github.com
+if($LASTEXITCODE -ne 0){ throw 'GitHub CLI is not authenticated.' }
+
+Step 'Find existing EXPO_TOKEN credential host'
+$CredentialHost=''
+foreach($candidate in $HostCandidates){
+  $saved=$ErrorActionPreference; $ErrorActionPreference='Continue'
+  $names=@(& gh secret list --repo $candidate --json name --jq '.[].name' 2>$null)
+  $code=$LASTEXITCODE
+  $ErrorActionPreference=$saved
+  if($code -eq 0 -and $names -contains 'EXPO_TOKEN'){
+    $CredentialHost=$candidate
+    break
+  }
+}
+if([string]::IsNullOrWhiteSpace($CredentialHost)){
+  throw 'No existing EXPO_TOKEN was found in the known BLINK/NoteJob credential-host repositories.'
+}
+Write-Host "PASS Existing EXPO_TOKEN found in $CredentialHost" -ForegroundColor Green
+
+Step 'OX Invoice IAP key'
+$hostSecrets=@(& gh secret list --repo $CredentialHost --json name --jq '.[].name')
+if($LASTEXITCODE -ne 0){ throw 'Unable to inspect credential-host secrets.' }
+if($hostSecrets -notcontains 'OX_INVOICE_IAPKIT_KEY'){
+  Write-Host 'EXPO_TOKEN is already handled. OX Invoice only needs its own IAPKit publishable key because it sells subscriptions.' -ForegroundColor Yellow
+  $iap=Read-Secret 'IAPKit publishable key (openiap-kit_pk_...)'
+  if([string]::IsNullOrWhiteSpace($iap) -or -not $iap.StartsWith('openiap-kit_pk_')){ throw 'Invalid IAPKit publishable key.' }
+  $iap | & gh secret set OX_INVOICE_IAPKIT_KEY --repo $CredentialHost
+  if($LASTEXITCODE -ne 0){ throw 'Unable to store OX Invoice IAPKit key in credential-host repository.' }
+  Write-Host 'PASS OX_INVOICE_IAPKIT_KEY saved' -ForegroundColor Green
+}else{
+  Write-Host 'PASS OX Invoice IAPKit key already configured' -ForegroundColor Green
+}
+
+Step 'Prepare exact OX Invoice source repository'
+if(-not (Test-Path '.git')){ Run-Checked 'git' @('init'); Run-Checked 'git' @('branch','-M',$SourceBranch) }
+Run-Checked 'git' @('config','user.name','OpertatorX')
+Run-Checked 'git' @('config','user.email','OpertatorX@users.noreply.github.com')
+
+$origin=''
+try { $origin=(& git remote get-url origin 2>$null).Trim() } catch { $origin='' }
+if(-not $origin){ Run-Checked 'git' @('remote','add','origin',"https://github.com/$SourceRepo.git") }
+elseif($origin -ne "https://github.com/$SourceRepo.git"){ Run-Checked 'git' @('remote','set-url','origin',"https://github.com/$SourceRepo.git") }
+
+Run-Checked 'git' @('add','-A')
+& git diff --cached --quiet
+$diff=$LASTEXITCODE
+if($diff -eq 1){ Run-Checked 'git' @('commit','-m','OX Invoice 1.0 build 1 - final BLINK release') }
+elseif($diff -ne 0){ throw "git diff failed (exit $diff)" }
+Run-Checked 'git' @('branch','-M',$SourceBranch)
+Run-Checked 'git' @('push','-u','origin',$SourceBranch)
+
+Step 'Install isolated OX workflow in credential host'
+$defaultBranch=(& gh repo view $CredentialHost --json defaultBranchRef --jq '.defaultBranchRef.name').Trim()
+if($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($defaultBranch)){ throw 'Unable to resolve credential-host default branch.' }
+$workflowLocal=Join-Path $Root 'scripts\credential-host\ox-invoice-build.yml'
+$workflowText=Get-Content -LiteralPath $workflowLocal -Raw
+$b64=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($workflowText))
+$apiPath="repos/$CredentialHost/contents/.github/workflows/$WorkflowName"
+$existingSha=''
+$saved=$ErrorActionPreference; $ErrorActionPreference='Continue'
+$existingJson=& gh api $apiPath 2>$null
+$existingCode=$LASTEXITCODE
+$ErrorActionPreference=$saved
+if($existingCode -eq 0 -and $existingJson){ $existingSha=[string](($existingJson | ConvertFrom-Json).sha) }
+$putArgs=@('api','--method','PUT',$apiPath,'-f','message=ci: add/update OX Invoice credential-host workflow','-f',("content="+$b64),'-f',("branch="+$defaultBranch))
+if($existingSha){ $putArgs+=@('-f',("sha="+$existingSha)) }
+& gh @putArgs | Out-Null
+if($LASTEXITCODE -ne 0){ throw 'Unable to install OX Invoice workflow in credential-host repository.' }
+Write-Host "PASS Workflow installed in $CredentialHost/$defaultBranch" -ForegroundColor Green
+
+Step 'Mirror exact source to isolated credential-host branch'
+$hostUrl="https://github.com/$CredentialHost.git"
+$hostRemote='credential-host'
+$hostExisting=''
+try { $hostExisting=(& git remote get-url $hostRemote 2>$null).Trim() } catch { $hostExisting='' }
+if(-not $hostExisting){ Run-Checked 'git' @('remote','add',$hostRemote,$hostUrl) }
+elseif($hostExisting -ne $hostUrl){ Run-Checked 'git' @('remote','set-url',$hostRemote,$hostUrl) }
+Run-Checked 'git' @('push','--force',$hostRemote,("$SourceBranch`:$HostBranch"))
+
+Step 'Launch BLINK macOS build using existing GitHub EXPO_TOKEN'
+& gh workflow run $WorkflowName --repo $CredentialHost --ref $defaultBranch -f "source_ref=$HostBranch"
+if($LASTEXITCODE -ne 0){ throw 'Unable to launch credential-host iOS workflow.' }
+Start-Sleep -Seconds 6
+$runJson=& gh run list --repo $CredentialHost --workflow $WorkflowName --event workflow_dispatch --limit 10 --json databaseId,status,conclusion,url,createdAt
+if($LASTEXITCODE -ne 0){ throw 'Unable to list credential-host workflow runs.' }
+$runs=@($runJson | ConvertFrom-Json)
+if(-not $runs -or $runs.Count -lt 1){ throw 'GitHub build run not found.' }
+$run=$runs | Sort-Object {[DateTimeOffset]::Parse($_.createdAt)} -Descending | Select-Object -First 1
+$runId=[string]$run.databaseId
+Write-Host "Build: $($run.url)" -ForegroundColor Cyan
+
+& gh run watch $runId --repo $CredentialHost --exit-status
+$watchCode=$LASTEXITCODE
+if($watchCode -ne 0){
+  Write-Host ''
+  Write-Host 'Workflow failed. Printing failing logs:' -ForegroundColor Yellow
+  & gh run view $runId --repo $CredentialHost --log-failed
+}
+
+Step 'Download IPA if build produced it'
+$artifactDir=Join-Path $Root ("artifacts\run-"+$runId)
+New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
+$saved=$ErrorActionPreference; $ErrorActionPreference='Continue'
+& gh run download $runId --repo $CredentialHost --name 'OX-Invoice-IPA' --dir $artifactDir
+$downloadCode=$LASTEXITCODE
+$ErrorActionPreference=$saved
+$ipa=Get-ChildItem $artifactDir -Recurse -Filter '*.ipa' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if($ipa){ Write-Host "IPA: $($ipa.FullName)" -ForegroundColor Green }
+elseif($watchCode -eq 0){ throw 'Workflow succeeded but IPA artifact was not found.' }
+
+if($watchCode -ne 0){ throw "iOS credential-host workflow failed (run $runId)." }
+
+Write-Host ''
+Write-Host '============================================================' -ForegroundColor Green
+Write-Host 'OX INVOICE 1.0 (1) BUILT + SUBMIT STEP COMPLETED' -ForegroundColor Green
+Write-Host "EXPO_TOKEN reused from: $CredentialHost" -ForegroundColor Green
+Write-Host 'No Expo token was entered or copied locally.' -ForegroundColor Green
+Write-Host '============================================================' -ForegroundColor Green
+if($ipa){ Write-Host "IPA: $($ipa.FullName)" -ForegroundColor Cyan }

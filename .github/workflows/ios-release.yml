@@ -1,0 +1,115 @@
+name: OperatorX iOS Release
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: build | upload_existing | metadata | screenshots
+        required: true
+        default: build
+        type: choice
+        options: [build, upload_existing, metadata, screenshots]
+      source_run_id:
+        description: Build workflow run ID for upload_existing
+        required: false
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  config:
+    runs-on: ubuntu-latest
+    outputs:
+      runner: ${{ steps.cfg.outputs.runner }}
+      node: ${{ steps.cfg.outputs.node }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: cfg
+        shell: bash
+        run: |
+          echo "runner=$(node -p \"require('./.operatorx/toolchain.json').macosRunner\")" >> "$GITHUB_OUTPUT"
+          echo "node=$(node -p \"require('./.operatorx/toolchain.json').node\")" >> "$GITHUB_OUTPUT"
+  build:
+    if: ${{ inputs.mode == 'build' }}
+    needs: config
+    runs-on: ${{ needs.config.outputs.runner }}
+    env:
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
+      EXPO_PUBLIC_IAPKIT_API_KEY: ${{ secrets.EXPO_PUBLIC_IAPKIT_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ needs.config.outputs.node }}' }
+      - name: Install JS dependencies before Expo
+        shell: bash
+        run: |
+          if [[ -f package-lock.json ]]; then npm ci; else npm install; fi
+      - name: Freeze and audit source
+        run: |
+          node scripts/source-manifest.mjs . --verify
+          node scripts/audit-app.mjs .
+      - name: Build native IPA with Xcode
+        run: bash scripts/ios/build_ios.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: |
+            artifacts/*.ipa
+            artifacts/IPA_SHA256.txt
+            artifacts/BUILD_MANIFEST.json
+          if-no-files-found: error
+          retention-days: 30
+  upload_existing:
+    if: ${{ inputs.mode == 'upload_existing' }}
+    needs: config
+    runs-on: ${{ needs.config.outputs.runner }}
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ needs.config.outputs.node }}' }
+      - uses: ruby/setup-ruby@v1
+        with: { ruby-version: '3.3', bundler-cache: true }
+      - name: Download exact existing IPA — never rebuild
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-ipa
+          path: artifacts
+          run-id: ${{ inputs.source_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - run: bash scripts/ios/upload_apple.sh
+  metadata:
+    if: ${{ inputs.mode == 'metadata' }}
+    needs: config
+    runs-on: ubuntu-latest
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ needs.config.outputs.node }}' }
+      - uses: ruby/setup-ruby@v1
+        with: { ruby-version: '3.3', bundler-cache: true }
+      - run: bash scripts/ios/sync_metadata.sh
+  screenshots:
+    if: ${{ inputs.mode == 'screenshots' }}
+    needs: config
+    runs-on: ubuntu-latest
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ needs.config.outputs.node }}' }
+      - uses: ruby/setup-ruby@v1
+        with: { ruby-version: '3.3', bundler-cache: true }
+      - run: bash scripts/ios/sync_screenshots.sh

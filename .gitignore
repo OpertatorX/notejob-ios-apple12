@@ -1,0 +1,10 @@
+node_modules/
+ios/
+android/
+artifacts/
+.factory-tools/
+.env
+*.p8
+*.p12
+*.mobileprovision
+release/STATE.json

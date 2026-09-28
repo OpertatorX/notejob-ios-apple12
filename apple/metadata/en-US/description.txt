@@ -1,0 +1,31 @@
+OX Invoice is a focused quote and invoice maker for freelancers, independent contractors, and small businesses.
+
+Create a professional estimate, turn it into an invoice when the job is approved, export a polished PDF, and keep track of what is sent, accepted, paid, or overdue - without a complicated accounting suite.
+
+FAST DOCUMENTS
+- Create estimates and invoices in a few steps
+- Save clients automatically for faster reuse
+- Reuse line items, quantities, rates, discounts, taxes, deposits, and due dates
+- Convert an estimate into an invoice
+- Duplicate an existing document when you need a similar one
+
+PROFESSIONAL PDFs
+- Preview the document before sharing
+- Choose from Classic, Modern, and Minimal layouts
+- Add your business details and logo
+- Export and share a clean A4 PDF
+- Support for EUR, USD, GBP, and CHF
+
+SIMPLE TRACKING
+- See unpaid, paid, overdue, and pending totals at a glance
+- Search and filter estimates and invoices
+- Mark estimates as accepted and invoices as paid
+- Keep client and document history on your device
+
+PRIVATE BY DEFAULT
+Your business, client, and document content is stored locally on your device. OX Invoice has no advertising and no tracking SDK.
+
+OX Invoice includes three free documents so you can test the complete workflow before choosing OX Invoice Pro. Pro is offered as an auto-renewable subscription. Prices and availability shown by the App Store apply.
+
+Terms: https://operatorx-ox-invoice.vercel.app/en-US/terms.html
+Privacy: https://operatorx-ox-invoice.vercel.app/en-US/privacy.html

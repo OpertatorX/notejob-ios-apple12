@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-28T06:26:49.700Z",
+  "identity": {
+    "name": "OX Invoice",
+    "bundleId": "com.operatorx.oxinvoice",
+    "version": "1.0",
+    "build": 1
+  },
+  "files": [
+    {
+      "path": "app.operatorx.json",
+      "sha256": "99e7d2908ba800accd86a22bf7fa1a68a64ed3e8abf2fdcc6fc693aeb901f2f6"
+    },
+    {
+      "path": "app.config.js",
+      "sha256": "5e5370c7583a542a9133723889bb92df207496ebb9f991ee28a3f7d95f3d1fc8"
+    },
+    {
+      "path": "package.json",
+      "sha256": "9c76fde9e89503a8180b1649dd78dfca3df1c8fa0b4bab0227dd389ba1753f72"
+    },
+    {
+      "path": "App.tsx",
+      "sha256": "edbe6860078a62fd6e92fb5f2098bcd4952b6f4a22b52ccc47e8162e64483671"
+    },
+    {
+      "path": "assets/icon.png",
+      "sha256": "1193dd9349a5b69e649a114d3bbe9ea4d85f04e9b9dfc6a73ee1ba75c55b107e"
+    },
+    {
+      "path": ".github/workflows/ios-release.yml",
+      "sha256": "4462d10af9411f37f0c5f5ec2afdfdd1f6530dea55d7a772784c048ed07eb930"
+    },
+    {
+      "path": "scripts/ios/build_ios.sh",
+      "sha256": "613b3f72a69b89c0f2c0846ece3301123dd64a6811be9543c4eb67c1b6960b64"
+    },
+    {
+      "path": "scripts/ios/sign_ios.sh",
+      "sha256": "9d639235577b72e0b9f1a995a43160f82a82d34208014115bcb1d7b099dc2f30"
+    },
+    {
+      "path": "scripts/ios/upload_apple.sh",
+      "sha256": "477d4809e4ef989973382aac89a1a0f6458bf685c20fbc57dea23b9c7bcb7008"
+    },
+    {
+      "path": "scripts/ios/asc-build-check.mjs",
+      "sha256": "112b73e8b95976b97b90a3609021122a0332c6dbe836c49de1f633a1dd5e3c11"
+    },
+    {
+      "path": "scripts/ios/asc-metadata-snapshot.mjs",
+      "sha256": "a2a658402e53d93070495d2032253c80773f0cd2894100e5627a38e187f623ed"
+    },
+    {
+      "path": "scripts/ios/sync_metadata.sh",
+      "sha256": "340857e9b4f091d6e424003fd02f5209447da916b6780e1c3629ed5f6b38e5f0"
+    },
+    {
+      "path": "scripts/ios/sync_screenshots.sh",
+      "sha256": "78dc7f145969877261e2e3023106a21755dacd5e375f2668c463f5f99103119c"
+    },
+    {
+      "path": "scripts/RELEASE.ps1",
+      "sha256": "71b657c69316908ee9651799956443354f3f418363a9e3582afc7d2bff5aa5e0"
+    },
+    {
+      "path": "apple/review/REVIEW_NOTES.md",
+      "sha256": "369753869263bead02781e6781678ffd0392576f2b85d17943e9e8e4f9aabb86"
+    }
+  ]
+}

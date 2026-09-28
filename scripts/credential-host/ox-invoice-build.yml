@@ -1,0 +1,93 @@
+name: OX Invoice BLINK credential-host release
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Branch containing OX Invoice source
+        required: true
+        default: ox-invoice-release
+permissions:
+  contents: read
+  actions: read
+jobs:
+  release:
+    runs-on: macos-26
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EXPO_PUBLIC_IAPKIT_API_KEY: ${{ secrets.OX_INVOICE_IAPKIT_KEY }}
+      EXPO_PUBLIC_APP_ENV: production
+    steps:
+      - name: Checkout OX Invoice source branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Select proven Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          XCODE='/Applications/Xcode_26.4.1.app/Contents/Developer'
+          test -d "$XCODE"
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f package-lock.json ]]; then npm ci; else npm install; fi
+      - name: Resolve or create EAS project without local Expo login
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${EXPO_TOKEN:-}" || { echo 'EXPO_TOKEN missing in credential-host repository'; exit 20; }
+          test -n "${EXPO_PUBLIC_IAPKIT_API_KEY:-}" || { echo 'OX_INVOICE_IAPKIT_KEY missing in credential-host repository'; exit 21; }
+          cp app.config.js app.config.runtime.js
+          restore_config(){
+            rm -f app.json
+            if [[ -f app.config.runtime.js ]]; then mv -f app.config.runtime.js app.config.js; fi
+          }
+          trap restore_config EXIT
+          node <<'NODE'
+          const fs=require('fs');
+          const a=JSON.parse(fs.readFileSync('app.operatorx.json','utf8'));
+          const cfg={expo:{name:a.name,slug:a.slug,owner:'operatorx',version:a.version,ios:{bundleIdentifier:a.bundleId,buildNumber:String(a.build)}}};
+          fs.writeFileSync('app.json',JSON.stringify(cfg,null,2)+'\\n');
+          NODE
+          npx --yes eas-cli@latest project:init --account operatorx --force --non-interactive
+          EAS_PROJECT_ID="$(node -e "const j=require('./app.json'); process.stdout.write(j.expo?.extra?.eas?.projectId || '')")"
+          test -n "$EAS_PROJECT_ID" || { echo 'EAS project ID was not written by project:init'; exit 22; }
+          restore_config
+          trap - EXIT
+          echo "EAS_PROJECT_ID=$EAS_PROJECT_ID" >> "$GITHUB_ENV"
+          echo "EAS project: $EAS_PROJECT_ID"
+      - name: Verify exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/audit-ox-invoice.mjs
+          node tests/run-core-tests.mjs
+      - name: Build signed IPA locally with EAS managed credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          npx --yes eas-cli@latest build --platform ios --profile production --local --non-interactive --output ./artifacts/OX-Invoice-1.0-build1.ipa
+          test -f ./artifacts/OX-Invoice-1.0-build1.ipa
+          shasum -a 256 ./artifacts/OX-Invoice-1.0-build1.ipa | tee ./artifacts/IPA_SHA256.txt
+      - name: Preserve IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OX-Invoice-IPA
+          path: |
+            artifacts/OX-Invoice-1.0-build1.ipa
+            artifacts/IPA_SHA256.txt
+          if-no-files-found: error
+          retention-days: 30
+      - name: Submit exact IPA to App Store Connect with EAS
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes eas-cli@latest submit --platform ios --profile production --path ./artifacts/OX-Invoice-1.0-build1.ipa --non-interactive

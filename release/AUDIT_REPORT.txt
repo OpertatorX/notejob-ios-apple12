@@ -1,0 +1,6 @@
+WARN [PACKAGE_LOCK_MISSING] package-lock.json missing; run PREFLIGHT/npm install before GitHub build
+WARN [SCREENSHOTS_MISSING] App Store screenshots missing
+
+HARD FAILURES: 0
+WARNINGS: 2
+BUILD ELIGIBLE: YES

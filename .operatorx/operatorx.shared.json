@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "brand": "OperatorX",
+  "publicSignature": "by OperatorX",
+  "bundlePrefix": "com.operatorx",
+  "apple": {
+    "teamId": "67ZL6VYTQ8",
+    "developerProgram": "Individual",
+    "defaultDevices": {
+      "iphone": true,
+      "ipad": true,
+      "macAppleSilicon": false,
+      "visionPro": false
+    },
+    "availability": "worldwide",
+    "price": "free",
+    "contentRightsThirdParty": true,
+    "trackingDefault": false,
+    "appPrivacyManual": true
+  },
+  "admob": {
+    "publisherId": "pub-9441192520255287",
+    "appAdsTxtLine": "google.com, pub-9441192520255287, DIRECT, f08c47fec0942fa0",
+    "productionTestPublisherIdForbidden": "3940256099942544"
+  },
+  "support": {
+    "email": "contact.operatorx@proton.me"
+  },
+  "locales": [
+    "fr-FR",
+    "en-US"
+  ],
+  "hosting": {
+    "preferred": "Vercel",
+    "sitePattern": "https://operatorx-{slug}.vercel.app"
+  },
+  "release": {
+    "easCloudForbidden": true,
+    "easSubmitForbidden": true,
+    "finalReviewSubmitManual": true,
+    "appPrivacyManual": true,
+    "separateBuildUploadMetadataReview": true
+  },
+  "expo": {
+    "organization": "operatorx",
+    "frameworkOnlyForRelease": true,
+    "easCloudRelease": false
+  },
+  "github": {
+    "owner": "auto-detect-authenticated-gh-user",
+    "defaultVisibility": "private",
+    "workflow": ".github/workflows/ios-release.yml"
+  }
+}

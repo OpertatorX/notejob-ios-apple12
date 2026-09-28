@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "verifiedOn": "2026-09-23",
+  "node": "24",
+  "expoSdk": "57",
+  "expoPackage": "~57.0.20",
+  "react": "19.2.3",
+  "reactNative": "0.86.3",
+  "typescript": "~6.0.3",
+  "googleMobileAds": "16.5.0",
+  "macosRunner": "macos-26",
+  "xcode": "26.4.1",
+  "xcodePathTemplate": "/Applications/Xcode_{version}.app/Contents/Developer",
+  "minimumAppleUploadXcodeMajor": 26,
+  "allowXcodeFallback": false,
+  "notes": [
+    "Xcode 26.4.1 is retained because it was proven on recent OperatorX pipelines and remains installed on macos-26 as of 2026-09-23.",
+    "GitHub currently defaults macos-26 to a newer Xcode; the workflow explicitly selects this value and fails clearly if absent.",
+    "Update this file deliberately when the toolchain changes; do not hardcode versions elsewhere."
+  ]
+}

@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "languages": [
+    "fr-FR",
+    "en-US"
+  ],
+  "ios": {
+    "iphone": true,
+    "ipad": true,
+    "deploymentTarget": "16.4"
+  },
+  "release": {
+    "metadataUpload": true,
+    "screenshotsUpload": true,
+    "submitForReview": false
+  },
+  "website": {
+    "deployed": false
+  },
+  "audit": {
+    "missingAppPrivacy": "warning",
+    "missingScreenshots": "warning",
+    "missingMarketing": "warning"
+  },
+  "admob": {
+    "enabledByDefault": false,
+    "interstitialCadence": "product-specific-safe-point"
+  },
+  "appStore": {
+    "price": "free",
+    "availability": "worldwide",
+    "contentRightsThirdParty": true,
+    "trackingDefault": false,
+    "ageRating": {
+      "allAnswers": "NO",
+      "advertising": "YES_WHEN_ADMOB"
+    },
+    "platforms": {
+      "iphone": true,
+      "ipad": true,
+      "macAppleSilicon": false,
+      "visionPro": false
+    },
+    "screenshotSpecs": {
+      "verifiedOn": "2026-09-23",
+      "source": "Apple App Store Connect screenshot specifications",
+      "noAlpha": true,
+      "iphoneAccepted": [
+        [
+          1260,
+          2736
+        ],
+        [
+          2736,
+          1260
+        ],
+        [
+          1290,
+          2796
+        ],
+        [
+          2796,
+          1290
+        ],
+        [
+          1320,
+          2868
+        ],
+        [
+          2868,
+          1320
+        ],
+        [
+          1284,
+          2778
+        ],
+        [
+          2778,
+          1284
+        ],
+        [
+          1242,
+          2688
+        ],
+        [
+          2688,
+          1242
+        ]
+      ],
+      "ipadRequiredAccepted": [
+        [
+          2064,
+          2752
+        ],
+        [
+          2752,
+          2064
+        ],
+        [
+          2048,
+          2732
+        ],
+        [
+          2732,
+          2048
+        ]
+      ]
+    }
+  }
+}

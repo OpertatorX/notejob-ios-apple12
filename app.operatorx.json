@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "name": "OX Invoice",
+  "slug": "ox-invoice",
+  "type": "business",
+  "bundleId": "com.operatorx.oxinvoice",
+  "version": "1.0",
+  "build": 1,
+  "demo": false,
+  "languages": [
+    "fr-FR",
+    "en-US"
+  ],
+  "monetization": {
+    "admob": false,
+    "iap": true
+  },
+  "admob": {
+    "iosAppId": null,
+    "bannerUnitId": null,
+    "interstitialUnitId": null,
+    "rewardedUnitId": null,
+    "forceTestAds": false,
+    "testflightOnly": false
+  },
+  "apple": {
+    "iphone": true,
+    "ipad": true,
+    "appStoreId": "",
+    "primaryLocale": "en-US"
+  },
+  "website": {
+    "baseUrl": "https://operatorx-ox-invoice.vercel.app",
+    "privacyUrl": "https://operatorx-ox-invoice.vercel.app/fr-FR/privacy.html",
+    "supportUrl": "https://operatorx-ox-invoice.vercel.app/fr-FR/support.html",
+    "termsUrl": "https://operatorx-ox-invoice.vercel.app/fr-FR/terms.html",
+    "appAdsUrl": "",
+    "deployed": false
+  },
+  "features": {
+    "analytics": false
+  },
+  "release": {
+    "metadataUpload": true,
+    "screenshotsUpload": true,
+    "submitForReview": false
+  },
+  "iap": {
+    "type": "auto_renewable_subscriptions",
+    "group": "OX Invoice Pro",
+    "products": [
+      {
+        "id": "com.operatorx.oxinvoice.pro.6months",
+        "period": "P6M",
+        "targetPriceEUR": 9.99
+      },
+      {
+        "id": "com.operatorx.oxinvoice.pro.yearly",
+        "period": "P1Y",
+        "targetPriceEUR": 16.99
+      }
+    ],
+    "verification": "IAPKit publishable key via EXPO_PUBLIC_IAPKIT_API_KEY"
+  },
+  "eas": {
+    "projectId": ""
+  }
+}

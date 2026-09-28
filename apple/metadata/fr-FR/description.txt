@@ -1,0 +1,34 @@
+OX Invoice est une app de devis et factures pensée pour les freelances, indépendants, artisans et petites entreprises.
+
+Créez un devis professionnel, transformez-le en facture quand le client accepte, exportez un PDF propre et suivez ce qui est envoyé, accepté, payé ou en retard - sans logiciel de comptabilité compliqué.
+
+DOCUMENTS RAPIDES
+- Créez devis et factures en quelques étapes
+- Enregistrez automatiquement vos clients pour les réutiliser
+- Gérez prestations, quantités, tarifs, remises, taxes, acomptes et échéances
+- Convertissez un devis en facture
+- Dupliquez un document existant
+
+PDF PROFESSIONNELS
+- Prévisualisez le document avant l'envoi
+- Choisissez un style Classic, Modern ou Minimal
+- Ajoutez les coordonnées et le logo de votre entreprise
+- Exportez et partagez un PDF A4 soigné
+- Devises EUR, USD, GBP et CHF
+
+SUIVI SIMPLE
+- Consultez les montants à recevoir, payés et en retard
+- Recherchez et filtrez devis et factures
+- Marquez les devis comme acceptés et les factures comme payées
+- Gardez l'historique de vos clients et documents sur votre appareil
+
+IMPORTANT EN FRANCE
+OX Invoice génère des PDF de devis et factures. Lorsque votre activité est soumise à la facturation électronique réglementaire, un PDF seul ne remplace pas la plateforme agréée requise.
+
+PRIVÉ PAR DÉFAUT
+Les données de votre entreprise, de vos clients et de vos documents restent stockées localement sur votre appareil. OX Invoice n'intègre ni publicité ni SDK de suivi.
+
+OX Invoice comprend trois documents gratuits pour tester le parcours complet avant de choisir OX Invoice Pro. Pro est proposé sous forme d'abonnement à renouvellement automatique. Les prix et disponibilités affichés par l'App Store font foi.
+
+Conditions : https://operatorx-ox-invoice.vercel.app/fr-FR/terms.html
+Confidentialité : https://operatorx-ox-invoice.vercel.app/fr-FR/privacy.html

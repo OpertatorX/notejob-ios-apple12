@@ -1,0 +1,31 @@
+{
+  "name": "ox-invoice",
+  "version": "1.0.0",
+  "private": true,
+  "main": "node_modules/expo/AppEntry.js",
+  "scripts": {
+    "start": "expo start",
+    "typecheck": "tsc --noEmit",
+    "doctor": "expo-doctor",
+    "prebuild:ios": "expo prebuild --platform ios",
+    "test:logic": "node tests/run-core-tests.mjs",
+    "qa": "npm run typecheck && npm run test:logic && npm run audit:oxinvoice",
+    "audit:oxinvoice": "node scripts/audit-ox-invoice.mjs"
+  },
+  "dependencies": {
+    "expo": "~57.0.20",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "expo-build-properties": "~57.0.21",
+    "expo-print": "~57.0.2",
+    "expo-sharing": "~57.0.22",
+    "expo-sqlite": "~57.0.3",
+    "expo-image-picker": "~57.0.20",
+    "expo-iap": "^5.6.3",
+    "expo-file-system": "~57.0.7"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.7",
+    "typescript": "~6.0.3"
+  }
+}
