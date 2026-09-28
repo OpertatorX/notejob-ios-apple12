@@ -1,0 +1,50 @@
+{
+  "configVersion": 0,
+  "apple": {
+    "version": "1.0",
+    "info": {
+      "en-US": {
+        "title": "OX Invoice",
+        "subtitle": "Quotes & invoices, simplified",
+        "description": "OX Invoice is a focused quote and invoice maker for freelancers, independent contractors, and small businesses.\n\nCreate a professional estimate, turn it into an invoice when the job is approved, export a polished PDF, and keep track of what is sent, accepted, paid, or overdue - without a complicated accounting suite.\n\nFAST DOCUMENTS\n- Create estimates and invoices in a few steps\n- Save clients automatically for faster reuse\n- Reuse line items, quantities, rates, discounts, taxes, deposits, and due dates\n- Convert an estimate into an invoice\n- Duplicate an existing document when you need a similar one\n\nPROFESSIONAL PDFs\n- Preview the document before sharing\n- Choose from Classic, Modern, and Minimal layouts\n- Add your business details and logo\n- Export and share a clean A4 PDF\n- Support for EUR, USD, GBP, and CHF\n\nSIMPLE TRACKING\n- See unpaid, paid, overdue, and pending totals at a glance\n- Search and filter estimates and invoices\n- Mark estimates as accepted and invoices as paid\n- Keep client and document history on your device\n\nPRIVATE BY DEFAULT\nYour business, client, and document content is stored locally on your device. OX Invoice has no advertising and no tracking SDK.\n\nOX Invoice includes three free documents so you can test the complete workflow before choosing OX Invoice Pro. Pro is offered as an auto-renewable subscription. Prices and availability shown by the App Store apply.\n\nTerms: https://operatorx-ox-invoice.vercel.app/en-US/terms.html\nPrivacy: https://operatorx-ox-invoice.vercel.app/en-US/privacy.html",
+        "keywords": [
+          "invoice",
+          "estimate",
+          "quote",
+          "billing",
+          "receipt",
+          "freelancer",
+          "contractor",
+          "PDF",
+          "business",
+          "client"
+        ],
+        "promoText": "Create 3 quotes or invoices free. Then keep billing with polished PDFs, reusable clients, and a simple Pro plan built for small businesses.",
+        "marketingUrl": "https://operatorx-ox-invoice.vercel.app",
+        "supportUrl": "https://operatorx-ox-invoice.vercel.app/en-US/support.html",
+        "privacyPolicyUrl": "https://operatorx-ox-invoice.vercel.app/en-US/privacy.html"
+      },
+      "fr-FR": {
+        "title": "OX Invoice",
+        "subtitle": "Devis & factures, simplement",
+        "description": "OX Invoice est une app de devis et factures pensée pour les freelances, indépendants, artisans et petites entreprises.\n\nCréez un devis professionnel, transformez-le en facture quand le client accepte, exportez un PDF propre et suivez ce qui est envoyé, accepté, payé ou en retard - sans logiciel de comptabilité compliqué.\n\nDOCUMENTS RAPIDES\n- Créez devis et factures en quelques étapes\n- Enregistrez automatiquement vos clients pour les réutiliser\n- Gérez prestations, quantités, tarifs, remises, taxes, acomptes et échéances\n- Convertissez un devis en facture\n- Dupliquez un document existant\n\nPDF PROFESSIONNELS\n- Prévisualisez le document avant l'envoi\n- Choisissez un style Classic, Modern ou Minimal\n- Ajoutez les coordonnées et le logo de votre entreprise\n- Exportez et partagez un PDF A4 soigné\n- Devises EUR, USD, GBP et CHF\n\nSUIVI SIMPLE\n- Consultez les montants à recevoir, payés et en retard\n- Recherchez et filtrez devis et factures\n- Marquez les devis comme acceptés et les factures comme payées\n- Gardez l'historique de vos clients et documents sur votre appareil\n\nIMPORTANT EN FRANCE\nOX Invoice génère des PDF de devis et factures. Lorsque votre activité est soumise à la facturation électronique réglementaire, un PDF seul ne remplace pas la plateforme agréée requise.\n\nPRIVÉ PAR DÉFAUT\nLes données de votre entreprise, de vos clients et de vos documents restent stockées localement sur votre appareil. OX Invoice n'intègre ni publicité ni SDK de suivi.\n\nOX Invoice comprend trois documents gratuits pour tester le parcours complet avant de choisir OX Invoice Pro. Pro est proposé sous forme d'abonnement à renouvellement automatique. Les prix et disponibilités affichés par l'App Store font foi.\n\nConditions : https://operatorx-ox-invoice.vercel.app/fr-FR/terms.html\nConfidentialité : https://operatorx-ox-invoice.vercel.app/fr-FR/privacy.html",
+        "keywords": [
+          "facture",
+          "devis",
+          "artisan",
+          "freelance",
+          "PDF",
+          "facturation",
+          "client",
+          "entreprise",
+          "indépendant",
+          "autoentrepreneur"
+        ],
+        "promoText": "Créez 3 devis ou factures gratuitement. Puis continuez avec des PDF soignés, vos clients réutilisables et un Pro simple pour les indépendants.",
+        "marketingUrl": "https://operatorx-ox-invoice.vercel.app",
+        "supportUrl": "https://operatorx-ox-invoice.vercel.app/fr-FR/support.html",
+        "privacyPolicyUrl": "https://operatorx-ox-invoice.vercel.app/fr-FR/privacy.html"
+      }
+    }
+  }
+}
