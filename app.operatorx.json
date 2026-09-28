@@ -63,6 +63,6 @@
     "verification": "IAPKit publishable key via EXPO_PUBLIC_IAPKIT_API_KEY"
   },
   "eas": {
-    "projectId": ""
+    "projectId": "a8ec463b-a530-41c9-af1f-c5499359f881"
   }
 }
