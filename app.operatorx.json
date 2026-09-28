@@ -5,7 +5,7 @@
   "type": "business",
   "bundleId": "com.operatorx.oxinvoice",
   "version": "1.0",
-  "build": 1,
+  "build": 2,
   "demo": false,
   "languages": [
     "fr-FR",
@@ -26,7 +26,7 @@
   "apple": {
     "iphone": true,
     "ipad": true,
-    "appStoreId": "",
+    "appStoreId": "6817043240",
     "primaryLocale": "en-US"
   },
   "website": {
