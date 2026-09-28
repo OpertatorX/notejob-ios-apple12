@@ -115,8 +115,6 @@ $runs=@($runJson | ConvertFrom-Json)
 if(-not $runs -or $runs.Count -lt 1){ throw 'GitHub build run not found.' }
 $run=$runs | Sort-Object {$_.createdAt} -Descending | Select-Object -First 1
 $runId=[string]$run.databaseId
-$runId = ((@($runId) | ForEach-Object { "$_" -split '\s+' }) | Where-Object { $_ -match '^\d+$' } | Select-Object -First 1)
-if (-not $runId) { throw "Unable to resolve a single GitHub run ID." }
 Write-Host "Build: $($run.url)" -ForegroundColor Cyan
 
 & gh run watch $runId --repo $CredentialHost --exit-status
@@ -147,6 +145,5 @@ Write-Host "EXPO_TOKEN reused from: $CredentialHost" -ForegroundColor Green
 Write-Host 'No Expo token was entered or copied locally.' -ForegroundColor Green
 Write-Host '============================================================' -ForegroundColor Green
 if($ipa){ Write-Host "IPA: $($ipa.FullName)" -ForegroundColor Cyan }
-
 
 
