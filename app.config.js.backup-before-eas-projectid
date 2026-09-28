@@ -1,4 +1,4 @@
-const fs = require('fs');
+﻿const fs = require('fs');
 const path = require('path');
 
 module.exports = () => {
@@ -49,6 +49,9 @@ module.exports = () => {
         ['expo-build-properties', { ios: { deploymentTarget: '16.4' } }]
       ],
       extra: {
+      eas: {
+        projectId: "a8ec463b-a530-41c9-af1f-c5499359f881",
+      },
         operatorX: true,
         expoSdk: toolchain.expoSdk,
         eas: easProjectId ? { projectId: easProjectId } : undefined,
@@ -61,3 +64,4 @@ module.exports = () => {
     }
   };
 };
+
