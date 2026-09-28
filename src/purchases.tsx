@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AppState, Platform, type AppStateStatus } from 'react-native';
 import { ErrorCode, finishTransaction, getAvailablePurchases as getAvailablePurchasesDirect, useIAP, verifyPurchaseWithProvider, type Purchase } from 'expo-iap';
 
@@ -41,16 +41,20 @@ export function PurchaseProvider({ children, onEntitlement }: { children: React.
         : { apiKey: iapKitKey, google: { purchaseToken: purchase.purchaseToken } },
     });
     const verified = result.iapkit;
+    // The authoritative IAPKit response does not expose productId. The product
+    // identity is already bound to the StoreKit JWS we send for verification,
+    // and purchase.productId is allow-listed before this call.
     return Boolean(
       verified?.isValid === true &&
-      verified.productId != null &&
-      verified.productId === purchase.productId &&
-      verified.state === 'entitled'
+      verified.state === 'entitled' &&
+      verified.store === (Platform.OS === 'ios' ? 'apple' : 'google')
     );
   }, [iapKitKey, verificationConfigured]);
 
+  const lastVerifiedSuccessAt = useRef(0);
+
   const {
-    connected, subscriptions, fetchProducts, requestPurchase,
+    connected, subscriptions, fetchProducts, requestPurchase, restorePurchases,
   } = useIAP({
     onPurchaseSuccess: async purchase => {
       setBusy(true);
@@ -58,6 +62,7 @@ export function PurchaseProvider({ children, onEntitlement }: { children: React.
         if (!verificationConfigured) throw new Error('Purchase verification is not configured for this build.');
         const verified = await verifyStorePurchase(purchase);
         if (!verified) throw new Error('Purchase verification failed. No access was granted.');
+        lastVerifiedSuccessAt.current = Date.now();
         onEntitlement(true);
         await finishTransaction({ purchase, isConsumable: false });
       } catch (error) {
@@ -66,7 +71,14 @@ export function PurchaseProvider({ children, onEntitlement }: { children: React.
     },
     onPurchaseError: error => {
       setBusy(false);
-      if (error.code !== ErrorCode.UserCancelled) Alert.alert('OX Invoice Pro', error.message);
+      if (error.code === ErrorCode.UserCancelled) return;
+      // StoreKit 2 can occasionally emit a transient service error immediately
+      // after a verified success. Do not show a false failure banner in that case.
+      if (
+        error.code === ErrorCode.ServiceError &&
+        Date.now() - lastVerifiedSuccessAt.current < 1500
+      ) return;
+      Alert.alert('OX Invoice Pro', error.message);
     },
   });
 
@@ -125,9 +137,12 @@ export function PurchaseProvider({ children, onEntitlement }: { children: React.
   const restore = useCallback(async () => {
     setBusy(true);
     try {
+      // On iOS this performs the native App Store restore/sync first, then we
+      // re-read current entitlements and verify them with IAPKit.
+      await restorePurchases({ onlyIncludeActiveItemsIOS: true });
       return await refreshEntitlement();
     } finally { setBusy(false); }
-  }, [refreshEntitlement]);
+  }, [refreshEntitlement, restorePurchases]);
 
   const plans = useMemo(() => subscriptions
     .filter(p => ALL_PRODUCT_IDS.includes(p.id as typeof ALL_PRODUCT_IDS[number]))
