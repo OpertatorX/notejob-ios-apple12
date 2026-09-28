@@ -2,7 +2,7 @@
 
 ## Identity
 - App: OX Invoice
-- Version/build: 1.0 (1)
+- Version/build: 1.0 (2)
 - Bundle ID: `com.operatorx.oxinvoice`
 - Languages: English (U.S.) + French
 - Account/login: None required
