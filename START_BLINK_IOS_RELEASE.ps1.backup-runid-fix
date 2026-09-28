@@ -146,4 +146,3 @@ Write-Host 'No Expo token was entered or copied locally.' -ForegroundColor Green
 Write-Host '============================================================' -ForegroundColor Green
 if($ipa){ Write-Host "IPA: $($ipa.FullName)" -ForegroundColor Cyan }
 
-
