@@ -1,0 +1,31 @@
+{
+    "schemaVersion":  2,
+    "name":  "NoteJob",
+    "slug":  "notejob",
+    "scheme":  "notejob",
+    "bundleId":  "com.operatorx.notejob",
+    "version":  "1.0.0",
+    "build":  6,
+    "appStoreConnectId":  "6814423903",
+    "contactEmail":  "contact.operatorx@proton.me",
+    "supabase":  {
+                     "projectRef":  "ruyrbxlwueimtkcidbqa"
+                 },
+    "ugc":  {
+                "termsVersion":  "2026-09-24",
+                "ageRating":  "18+",
+                "reportSlaHours":  24
+            },
+    "apple":  {
+                  "teamId":  "67ZL6VYTQ8",
+                  "supportsTablet":  true
+              },
+    "github":  {
+                   "repository":  "notejob-ios-apple12"
+               },
+    "eas":  {
+                "owner":  "operatorx",
+                "slug":  "notejob",
+                "projectId":  "9c0ae692-d64f-4810-9fa3-67a24aa07eb2"
+            }
+}

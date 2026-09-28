@@ -1,0 +1,37 @@
+NOTEJOB 1.0.0 BUILD 6 - INTEGRITY AUDIT
+
+BASE
+- Exact recovered source: NoteJob-1.0-RELEASE-READY-WINDOWS-FIX5.zip
+- This was the source family used for App Store build 3.
+
+RELEASE ASSET LOCKS
+- assets/icon.png SHA256: ec370ae9247a4d23adb06d41897ce16b0a313c835c69754bb40b9df7e1bee779
+- assets/splash.png SHA256: bbe3e415b2e8420a5e2b149983602467fc83c4404b82daaac9d4e83d6a52abc2
+- src/screens/HomeScreen.tsx SHA256: 6415db3232e19a0c9e94b1fa96af16a1e3299892e50a63376fe736d9973d9f15
+- src/screens/SearchResultsScreen.tsx SHA256: 73b1603dedda4ad88e85fc3aa40b41af120d282926dc6863966c07ed686fa437
+- src/components/Brand.tsx SHA256: 64c82b5dea5c4c4082be5a5714a2135f75e3a173a1c5801c8d9215a6508fe7ca
+
+APPLE 1.2 PATCH ONLY
+- EULA/18+ gate before publish
+- Server-side filtered submit_rating_v2
+- Visible structured recent ratings
+- Per-rating report / hide / block
+- Safety & Contact page
+- 24-hour moderation wording
+- Build number 6
+
+BACKEND VERIFIED 2026-09-28
+- accept_ugc_terms
+- ugc_terms_status
+- submit_rating_v2
+- submit_rating_report
+- hide_rating
+- block_rating_author
+- get_visible_ratings
+- establishment_stats_v2
+- COMPUTACENTER FRANCE / ANTONY exists with 1 rating for reviewer testing
+
+STATIC QA
+- Apple 1.2 preflight: PASS
+- TS/TSX syntax transpile check: 23/23 PASS before packaging
+- Original preflight: PASS until expected online EAS-project-link gate

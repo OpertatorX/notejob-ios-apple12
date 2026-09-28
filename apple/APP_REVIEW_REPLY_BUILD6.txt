@@ -1,0 +1,27 @@
+Hello,
+
+Thank you for your feedback regarding Guideline 1.2.
+
+We revised NoteJob while preserving the existing app design and functionality. Build 6 adds the required user-generated content safeguards:
+
+- App Store Connect age rating set to 18+.
+- Mandatory Terms/EULA acceptance before publishing, including a clear zero-tolerance policy for objectionable content and abusive users.
+- Server-side filtering before publication.
+- A report action on every visible user rating.
+- A block-user action that keeps the author anonymous.
+- A Hide action that immediately removes the selected rating from the user's feed.
+- A moderation workflow for removing reported content and ejecting offending users.
+- Reports of objectionable content are reviewed and acted on within 24 hours.
+- In-app Safety & Contact information with direct email: contact.operatorx@proton.me.
+
+Reviewer path:
+1. Search Company: COMPUTACENTER FRANCE, City: ANTONY.
+2. Open the matching establishment.
+3. In "Expériences récentes", tap the ••• button on a rating.
+4. The menu contains "Signaler cet avis", "Masquer cet avis", and "Bloquer cet utilisateur".
+5. Tap "Noter cette entreprise". Before the first publication under the current Terms version, the mandatory 18+ Terms/EULA screen is shown.
+6. "Sécurité & contact" is available from the establishment page and Settings.
+
+The moderation backend enforces Terms acceptance, banned-user restrictions, server-side content filtering, reporting, hiding, and blocking.
+
+Thank you for reviewing NoteJob 1.0.0 (6).

@@ -1,0 +1,68 @@
+name: NoteJob build 6 iOS
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-ios:
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EXPO_PUBLIC_APP_ENV: production
+      EXPO_PUBLIC_ADMOB_TEST_MODE: 'false'
+      EAS_LOCAL_BUILD_ARTIFACTS_DIR: ${{ github.workspace }}/artifacts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Select Xcode 26.4.1
+        shell: bash
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.4.1.app/Contents/Developer
+          xcodebuild -version
+      - name: Install dependencies
+        shell: bash
+        run: npm install --no-audit --no-fund --legacy-peer-deps
+      - name: Verify Build 6 identity and final NoteJob icon
+        shell: bash
+        run: |
+          set -euo pipefail
+          ICON_SHA="$(shasum -a 256 assets/icon.png | awk '{print $1}')"
+          test "$ICON_SHA" = "ec370ae9247a4d23adb06d41897ce16b0a313c835c69754bb40b9df7e1bee779"
+          node - <<'NODE'
+          const cfg = require('./app.config.js')();
+          const f = require('./factory.app.json');
+          if (f.name !== 'NoteJob' || f.bundle_id !== 'com.operatorx.notejob') throw new Error('Wrong app identity');
+          if (Number(f.build_number) !== 6) throw new Error('Wrong factory build: ' + f.build_number);
+          if (String(cfg.expo.ios.buildNumber) !== '6') throw new Error('Expo build is not 6: ' + cfg.expo.ios.buildNumber);
+          if (cfg.expo.icon !== './assets/icon.png' || cfg.expo.ios.icon !== './assets/icon.png') throw new Error('Icon path is not locked');
+          console.log('PASS NoteJob 1.0.0 (6) | com.operatorx.notejob | final icon locked');
+          NODE
+      - name: Validate exact build 3 UI plus Apple 1.2 patch
+        shell: bash
+        run: |
+          node scripts/ts-syntax-check.cjs
+          node scripts/preflight.cjs
+          node scripts/blink-method-preflight.cjs
+          npx expo-doctor
+      - name: Build signed IPA locally with EAS
+        shell: bash
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
+          npx eas-cli@latest build --platform ios --profile production --local --non-interactive --output "$GITHUB_WORKSPACE/artifacts/NoteJob-1.0.0-build6-PRODUCTION.ipa"
+      - name: Verify IPA
+        shell: bash
+        run: |
+          test -s "$GITHUB_WORKSPACE/artifacts/NoteJob-1.0.0-build6-PRODUCTION.ipa"
+          shasum -a 256 "$GITHUB_WORKSPACE/artifacts/NoteJob-1.0.0-build6-PRODUCTION.ipa"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NoteJob-IPA-BUILD6
+          path: artifacts/NoteJob-1.0.0-build6-PRODUCTION.ipa
+          if-no-files-found: error
+          retention-days: 7

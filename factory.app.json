@@ -1,0 +1,30 @@
+{
+    "name":  "NoteJob",
+    "slug":  "notejob",
+    "bundle_id":  "com.operatorx.notejob",
+    "sku":  "NOTEJOB-IOS-001",
+    "version":  "1.0.0",
+    "build_number":  6,
+    "monetization":  "admob",
+    "admob":  {
+                  "ios_app_id":  "ca-app-pub-9441192520255287~5695966144",
+                  "banner_unit_id":  "ca-app-pub-9441192520255287/8591748913",
+                  "interstitial_unit_id":  "ca-app-pub-9441192520255287/2437404106",
+                  "created_before_apple_build":  true,
+                  "ump_message_published":  true
+              },
+    "website":  {
+                    "base_url":  "https://operatorx-notejob-g3fiwf72k-operator-x2.vercel.app",
+                    "domain_control_confirmed":  true,
+                    "deployed":  true,
+                    "app_ads_verified":  true
+                },
+    "eas_project_id":  "9c0ae692-d64f-4810-9fa3-67a24aa07eb2",
+    "app_store_id":  "6814423903",
+    "apple":  {
+                  "team_id":  "67ZL6VYTQ8",
+                  "supports_ipad":  true,
+                  "mac_enabled":  false,
+                  "vision_pro_enabled":  false
+              }
+}

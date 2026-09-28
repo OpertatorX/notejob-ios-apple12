@@ -1,0 +1,24 @@
+{
+  "app": "NoteJob",
+  "version": "1.0.0",
+  "build": 6,
+  "bundleId": "com.operatorx.notejob",
+  "icon": {
+    "path": "assets/icon.png",
+    "sha256": "ec370ae9247a4d23adb06d41897ce16b0a313c835c69754bb40b9df7e1bee779",
+    "width": 1024,
+    "height": 1024,
+    "mode": "RGB",
+    "visual": "ivory buildings + star on green background; no NJ monogram"
+  },
+  "criticalFiles": {
+    "assets/icon.png": "ec370ae9247a4d23adb06d41897ce16b0a313c835c69754bb40b9df7e1bee779",
+    "site/icon.png": "ec370ae9247a4d23adb06d41897ce16b0a313c835c69754bb40b9df7e1bee779",
+    "factory.app.json": "01a6131acf6f0614f5f41d4f24f184fa15762b5830f0b5c28ace354ce02202a3",
+    "app.operatorx.json": "e5cb08c438ec11f65ed7353560c72f42d7ee1133b2b288c30a36529eb98f8825",
+    "app.config.js": "9650e24352af02c25b32ad22badcf443ae636f2090571798b661e855fe4c7e09",
+    "scripts/blink-method-preflight.cjs": "8b4c452a15774e42e5efe01b4ef875f85e812f1a0fc4be3929907efb8a823245",
+    ".github/workflows/ios-free-build.yml": "93951d2c661f734f81a4983386d9dabe9551a5118957022859eb7fde18247814",
+    "START_NOTEJOB_BLINK_RELEASE.ps1": "9fff2e78bfb42d689da0147f2a9fd3d2d02237c0d325c4d5edf75e65d17f7565"
+  }
+}

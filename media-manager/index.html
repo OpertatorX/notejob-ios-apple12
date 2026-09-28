@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>NoteJob Media Manager</title>
+  <style>
+    :root{--bg:#f4f0e6;--ink:#151a16;--green:#075a43;--muted:#777b74;--line:#d8d1c3;--card:#fffdf8}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    .wrap{max-width:980px;margin:auto;padding:38px 22px 80px}.brand{font-family:Georgia,serif;font-size:42px;font-weight:700}.brand b{color:var(--green)}
+    h1{font-family:Georgia,serif;font-size:38px;line-height:1.02;margin:32px 0 10px}.sub{color:var(--muted);max-width:680px;line-height:1.55}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:28px}.panel{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:0 10px 30px rgba(40,50,44,.06)}
+    label{display:block;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;margin:14px 0 7px;color:#526056}input,select{width:100%;height:48px;border:1px solid var(--line);border-radius:12px;background:#fff;padding:0 13px;font-size:15px;color:var(--ink)}
+    button{border:0;border-radius:12px;background:var(--green);color:white;font-weight:800;padding:14px 18px;cursor:pointer}button.secondary{background:#e2ebe6;color:var(--green)}button:disabled{opacity:.45;cursor:not-allowed}.row{display:flex;gap:10px;align-items:center}.row>*{flex:1}
+    .status{margin-top:12px;font-size:13px;line-height:1.5;color:var(--muted)}.ok{color:#08734f}.err{color:#9b2d22}.hidden{display:none}.preview{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:14px;background:#e8e4db;border:1px solid var(--line)}.logo{aspect-ratio:1/1;max-width:160px;object-fit:contain;background:white}
+    .divider{height:1px;background:var(--line);margin:22px 0}.small{font-size:12px;color:var(--muted)}.lookup-results{display:grid;gap:8px;margin-top:12px}.lookup-item{width:100%;text-align:left;background:#f5f3ec;color:var(--ink);border:1px solid var(--line);padding:12px;border-radius:12px}.lookup-item b{display:block}.lookup-item span{display:block;margin-top:3px;font-size:12px;color:var(--muted);font-weight:500}
+    @media(max-width:760px){.grid{grid-template-columns:1fr}.wrap{padding:26px 16px 60px}.brand{font-size:34px}h1{font-size:31px}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">Note<b>Job</b></div>
+  <h1>Media Manager</h1>
+  <p class="sub">Change le logo ou l'image principale d'une entreprise sans toucher au code. Une image liée à un SIRET remplace celle du SIREN uniquement pour cet établissement.</p>
+
+  <div class="grid">
+    <section class="panel" id="authPanel">
+      <h2>1. Connexion admin</h2>
+      <p class="small">Crée un compte permanent une seule fois. Le premier compte permanent qui clique « Devenir Media Admin » devient l'administrateur média.</p>
+      <label>Email</label><input id="email" type="email" placeholder="contact@..." />
+      <label>Mot de passe</label><input id="password" type="password" placeholder="8 caractères minimum" />
+      <div class="row" style="margin-top:14px"><button id="loginBtn">Connexion</button><button class="secondary" id="signupBtn">Créer le compte</button></div>
+      <button class="secondary hidden" style="margin-top:12px;width:100%" id="claimBtn">Devenir Media Admin</button>
+      <div class="status" id="authStatus">Non connecté.</div>
+    </section>
+
+    <section class="panel">
+      <h2>2. Trouver l’entreprise</h2>
+      <p class="small">Recherche par nom + ville. Clique ensuite sur le bon établissement : le SIREN/SIRET est rempli automatiquement.</p>
+      <label>Entreprise</label><input id="lookupCompany" placeholder="Nom de l’entreprise" />
+      <label>Ville</label><input id="lookupCity" placeholder="Votre ville" />
+      <button style="margin-top:14px;width:100%" id="lookupBtn">Rechercher</button>
+      <div class="status" id="lookupStatus"></div>
+      <div class="lookup-results" id="lookupResults"></div>
+    </section>
+
+    <section class="panel">
+      <h2>3. Cible</h2>
+      <label>Portée</label>
+      <select id="scope"><option value="company">Toute l'entreprise (SIREN)</option><option value="establishment">Cet établissement uniquement (SIRET)</option></select>
+      <label>SIREN</label><input id="siren" inputmode="numeric" maxlength="9" placeholder="123456789" />
+      <div id="siretWrap" class="hidden"><label>SIRET</label><input id="siret" inputmode="numeric" maxlength="14" placeholder="12345678900012" /></div>
+      <label>Texte alternatif</label><input id="alt" placeholder="Façade de l'entreprise, bureaux…" />
+      <div class="status" id="targetStatus">Entre le SIREN ou le SIRET de l'établissement.</div>
+    </section>
+
+    <section class="panel">
+      <h2>4. Logo</h2>
+      <img id="logoPreview" class="preview logo" alt="Aperçu logo" />
+      <label>Fichier logo</label><input id="logoFile" type="file" accept="image/png,image/jpeg,image/webp" />
+      <button style="margin-top:14px" id="uploadLogo">Uploader le logo</button>
+      <div class="status" id="logoStatus"></div>
+    </section>
+
+    <section class="panel">
+      <h2>5. Image principale</h2>
+      <img id="heroPreview" class="preview" alt="Aperçu image" />
+      <label>Fichier hero</label><input id="heroFile" type="file" accept="image/png,image/jpeg,image/webp" />
+      <button style="margin-top:14px" id="uploadHero">Uploader l'image</button>
+      <div class="status" id="heroStatus"></div>
+    </section>
+  </div>
+</div>
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+const URL='https://ruyrbxlwueimtkcidbqa.supabase.co';
+const KEY='sb_publishable_krLO4_z9TQ7b0mTK7vo-UA_8D5uL2if';
+const supabase=createClient(URL,KEY);
+const $=id=>document.getElementById(id);
+let session=null;
+const setStatus=(id,msg,kind='')=>{const e=$(id);e.className='status '+kind;e.textContent=msg};
+
+$('scope').addEventListener('change',()=>$('siretWrap').classList.toggle('hidden',$('scope').value!=='establishment'));
+for(const [file,preview] of [['logoFile','logoPreview'],['heroFile','heroPreview']]) $(''+file).addEventListener('change',e=>{const f=e.target.files?.[0]; if(f) $(''+preview).src=URL.createObjectURL(f)});
+
+async function refreshSession(){const {data}=await supabase.auth.getSession();session=data.session; if(session){setStatus('authStatus','Connecté : '+(session.user.email||session.user.id),'ok');$('claimBtn').classList.remove('hidden')} else {setStatus('authStatus','Non connecté.')}}
+await refreshSession();
+supabase.auth.onAuthStateChange((_e,s)=>{session=s;refreshSession()});
+
+$('loginBtn').onclick=async()=>{const {error}=await supabase.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});setStatus('authStatus',error?error.message:'Connexion réussie.',error?'err':'ok')};
+$('signupBtn').onclick=async()=>{const {error}=await supabase.auth.signUp({email:$('email').value.trim(),password:$('password').value});setStatus('authStatus',error?error.message:'Compte créé. Si Supabase demande une confirmation email, confirme-la puis reconnecte-toi.',error?'err':'ok')};
+$('claimBtn').onclick=async()=>{const {data,error}=await supabase.rpc('claim_first_media_admin');setStatus('authStatus',error?error.message:(data?'Tu es maintenant Media Admin.':'Un autre Media Admin existe déjà.'),error?'err':(data?'ok':'err'))};
+
+const norm=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+async function getJson(url){const r=await fetch(url,{headers:{Accept:'application/json'}});if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}
+async function resolveCity(raw){const c=raw.trim();if(/^\d{5}$/.test(c))return{name:c,postalCodes:[c]};const p=new URLSearchParams({nom:c,fields:'nom,code,codesPostaux',boost:'population',limit:'8'});try{const rows=await getJson('https://geo.api.gouv.fr/communes?'+p);if(!rows?.length)return null;const x=rows.find(v=>norm(v.nom)===norm(c))||rows[0];return{name:x.nom||c,codeCommune:x.code,postalCodes:x.codesPostaux||[]}}catch{return null}}
+function cityMatches(e,resolved,raw){if(!resolved)return norm((e.libelle_commune||e.commune||'')+' '+(e.code_postal||'')).includes(norm(raw));if(resolved.codeCommune&&e.code_commune)return e.code_commune===resolved.codeCommune;const ec=e.libelle_commune||e.commune||'';if(resolved.codeCommune&&ec)return norm(ec)===norm(resolved.name);if(e.code_postal&&resolved.postalCodes?.includes(e.code_postal))return true;return norm(ec)===norm(resolved.name)}
+async function lookupCompanies(q,rawCity){const resolved=await resolveCity(rawCity);const p=new URLSearchParams({q,page:'1',per_page:'25',limite_matching_etablissements:'100'});if(resolved?.codeCommune)p.set('code_commune',resolved.codeCommune);else if(/^\d{5}$/.test(rawCity))p.set('code_postal',rawCity);const j=await getJson('https://recherche-entreprises.api.gouv.fr/search?'+p);const out=[],seen=new Set(),qn=norm(q);for(const r of (j.results||[])){const legal=(r.nom_complet||r.nom_raison_sociale||'').trim();for(const e of [...(r.matching_etablissements||[]),...(r.siege?[r.siege]:[])]){if(!e?.siret||seen.has(e.siret)||(e.etat_administratif&&e.etat_administratif!=='A')||!cityMatches(e,resolved,rawCity))continue;const name=(e.liste_enseignes?.find(Boolean)||e.nom_commercial||legal).trim();if(!norm(name).includes(qn)&&!norm(legal).includes(qn))continue;seen.add(e.siret);out.push({name,legal,siren:r.siren,siret:e.siret,city:e.libelle_commune||e.commune||rawCity,postal:e.code_postal,address:e.adresse||''})}}return out.slice(0,20)}
+$('lookupBtn').onclick=async()=>{const q=$('lookupCompany').value.trim(),c=$('lookupCity').value.trim();$('lookupResults').innerHTML='';if(q.length<2||c.length<2){setStatus('lookupStatus','Entre un nom et une ville.','err');return}setStatus('lookupStatus','Recherche…');try{const rows=await lookupCompanies(q,c);setStatus('lookupStatus',rows.length?rows.length+' établissement(s) trouvé(s).':'Aucun établissement trouvé.',rows.length?'ok':'err');$('lookupResults').innerHTML=rows.map((x,i)=>`<button class=\"lookup-item\" data-i=\"${i}\"><b>${x.name}</b><span>${x.city}${x.postal?' · '+x.postal:''}${x.address?' · '+x.address:''}</span><span>SIRET ${x.siret}${x.legal&&x.legal!==x.name?' · '+x.legal:''}</span></button>`).join('');$('lookupResults').querySelectorAll('.lookup-item').forEach(btn=>btn.onclick=()=>{const x=rows[Number(btn.dataset.i)];$('scope').value='establishment';$('siretWrap').classList.remove('hidden');$('siren').value=x.siren;$('siret').value=x.siret;setStatus('targetStatus','Sélectionné : '+x.name+' · '+x.city,'ok')})}catch(e){setStatus('lookupStatus','Recherche indisponible : '+(e.message||e),'err')}};
+
+function target(){const scope=$('scope').value;const siren=$('siren').value.replace(/\D/g,'');const siret=$('siret').value.replace(/\D/g,'');if(siren.length!==9) throw new Error('SIREN invalide.');if(scope==='establishment'&&siret.length!==14) throw new Error('SIRET invalide.');if(scope==='establishment'&&!siret.startsWith(siren)) throw new Error('Le SIRET doit commencer par le SIREN.');return {scope,siren,siret:scope==='establishment'?siret:null,scopeId:scope==='establishment'?siret:siren}}
+async function upload(kind){const statusId=kind==='logo'?'logoStatus':'heroStatus';try{if(!session) throw new Error('Connecte-toi d’abord.');const t=target();const input=$(kind==='logo'?'logoFile':'heroFile');const f=input.files?.[0];if(!f) throw new Error('Choisis une image.');if(f.size>8*1024*1024) throw new Error('Image trop lourde (8 Mo max).');const ext=(f.name.split('.').pop()||'jpg').toLowerCase();const path=`${t.scope}/${t.scopeId}/${kind}.${ext}`;setStatus(statusId,'Upload…');const {error:upErr}=await supabase.storage.from('company-media').upload(path,f,{upsert:true,contentType:f.type});if(upErr) throw upErr;const uid=session.user.id;const payload={scope_type:t.scope,scope_id:t.scopeId,siren:t.siren,siret:t.siret,alt_text:$('alt').value.trim()||null,updated_at:new Date().toISOString(),updated_by:uid,[kind+'_path']:path};const {data:existing}=await supabase.from('company_media').select('logo_path,hero_path').eq('scope_type',t.scope).eq('scope_id',t.scopeId).maybeSingle();if(kind==='logo') payload.hero_path=existing?.hero_path||null;else payload.logo_path=existing?.logo_path||null;const {error:dbErr}=await supabase.from('company_media').upsert(payload,{onConflict:'scope_type,scope_id'});if(dbErr) throw dbErr;const publicUrl=supabase.storage.from('company-media').getPublicUrl(path).data.publicUrl;$(kind==='logo'?'logoPreview':'heroPreview').src=publicUrl+'?v='+Date.now();setStatus(statusId,'Enregistré. L’app utilisera cette image automatiquement.','ok')}catch(e){setStatus(statusId,e.message||String(e),'err')}}
+$('uploadLogo').onclick=()=>upload('logo');$('uploadHero').onclick=()=>upload('hero');
+</script>
+</body>
+</html>

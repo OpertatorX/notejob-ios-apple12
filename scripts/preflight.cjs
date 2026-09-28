@@ -1,0 +1,47 @@
+const fs = require('fs');
+const path = require('path');
+const root = path.resolve(__dirname, '..');
+const read = (p) => fs.readFileSync(path.join(root,p),'utf8');
+const fail = (m) => { console.error('FAIL', m); process.exitCode = 1; };
+const pass = (m) => console.log('PASS', m);
+const must = (cond,m) => cond ? pass(m) : fail(m);
+const pkg = JSON.parse(read('package.json'));
+const factory = JSON.parse(read('factory.app.json'));
+const config = read('app.config.js');
+const ads = read('src/lib/ads.ts');
+const banner = read('src/components/AdBanner.tsx');
+const home = read('src/screens/HomeScreen.tsx');
+const appads = read('site/app-ads.txt').trim();
+const eas = JSON.parse(read('eas.json'));
+
+must(pkg.version === '1.0.0', 'release version 1.0.0');
+must(factory.bundle_id === 'com.operatorx.notejob', 'bundle id');
+must(factory.admob.ios_app_id === 'ca-app-pub-9441192520255287~5695966144', 'AdMob app id');
+must(factory.admob.banner_unit_id === 'ca-app-pub-9441192520255287/8591748913', 'AdMob banner id');
+must(factory.admob.interstitial_unit_id === 'ca-app-pub-9441192520255287/2437404106', 'AdMob interstitial id');
+must(factory.admob.created_before_apple_build === true, 'AdMob created before first Apple build');
+must(appads === 'google.com, pub-9441192520255287, DIRECT, f08c47fec0942fa0', 'app-ads.txt exact line');
+must(config.includes('Production blocked by dossier maître'), 'production release gate');
+must(config.includes('GOOGLE_TEST_IOS_APP_ID'), 'test app id isolated from production');
+must(eas.build.production.env.EXPO_PUBLIC_ADMOB_TEST_MODE === 'false', 'production ads test mode disabled');
+must(eas.build.production.env.EXPO_PUBLIC_APP_ENV === 'production', 'production app environment');
+must(ads.includes('AdsConsent.gatherConsent()'), 'UMP before Mobile Ads');
+must(ads.indexOf('AdsConsent.gatherConsent()') < ads.indexOf('mobileAds().initialize()'), 'UMP executes before SDK initialize');
+must(ads.includes('requestNonPersonalizedAdsOnly: true'), 'interstitial NPA');
+must(banner.includes('LARGE_ANCHORED_ADAPTIVE_BANNER'), 'ResellCalc fix: large anchored adaptive banner');
+must(banner.includes('bannerRef.current?.load?.()'), 'ResellCalc fix: iOS foreground reload');
+must(banner.includes('onAdLoaded'), 'ResellCalc fix: banner loaded callback');
+must(banner.includes('onAdFailedToLoad'), 'ResellCalc fix: banner failure callback');
+must(banner.includes('onAdImpression'), 'ResellCalc fix: impression callback');
+must(banner.includes('30000'), 'ResellCalc fix: 30s banner retry');
+must(!banner.includes("overflow: 'hidden'"), 'ResellCalc fix: banner not clipped');
+must(home.includes('<AdBanner />'), 'banner mounted in real home UI');
+must(!home.includes('BannerAdSize.BANNER'), 'old fixed BANNER size absent from Home');
+
+const required = ['site/index.html','site/privacy.html','site/support.html','site/terms.html','assets/icon.png','assets/splash.png','apple/APP_STORE_FORM.md'];
+for (const f of required) must(fs.existsSync(path.join(root,f)), `required file ${f}`);
+
+if (!factory.admob.ump_message_published) console.warn('BLOCK ONLINE: UMP message not yet confirmed published in AdMob.');
+if (!factory.website.deployed || !factory.website.app_ads_verified) console.warn('BLOCK ONLINE: website/app-ads.txt not yet verified live.');
+if (!factory.eas_project_id) console.warn('BLOCK ONLINE: EAS project id not yet linked.');
+if (process.exitCode) process.exit(process.exitCode);
