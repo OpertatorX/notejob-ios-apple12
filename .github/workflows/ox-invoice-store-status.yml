@@ -1,0 +1,23 @@
+name: OX Invoice Store Status
+on:
+  push:
+    paths:
+      - .github/workflows/ox-invoice-store-status.yml
+permissions:
+  contents: read
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ox-invoice-release
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: App Store / TestFlight status
+        run: npx --yes eas-cli@latest submit:status --platform ios --profile production --json --non-interactive
