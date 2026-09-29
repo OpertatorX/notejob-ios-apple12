@@ -1,0 +1,23 @@
+name: OX Invoice Vercel Credential Probe
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/ox-invoice-vercel-probe.yml
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - name: Check reusable Vercel credentials
+        shell: bash
+        run: |
+          if [ -n "${VERCEL_TOKEN:-}" ]; then echo "VERCEL_TOKEN=PRESENT"; else echo "VERCEL_TOKEN=MISSING"; fi
+          if [ -n "${VERCEL_ORG_ID:-}" ]; then echo "VERCEL_ORG_ID=PRESENT"; else echo "VERCEL_ORG_ID=MISSING"; fi
+          if [ -n "${VERCEL_PROJECT_ID:-}" ]; then echo "VERCEL_PROJECT_ID=PRESENT"; else echo "VERCEL_PROJECT_ID=MISSING"; fi
