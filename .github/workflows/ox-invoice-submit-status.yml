@@ -1,0 +1,26 @@
+name: OX Invoice Submit Status
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/ox-invoice-submit-status.yml
+permissions:
+  contents: read
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ox-invoice-release
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Read EAS iOS submissions
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes eas-cli@latest submit:list -p ios --json --non-interactive --limit 10
