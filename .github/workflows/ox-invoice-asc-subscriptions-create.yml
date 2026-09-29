@@ -210,6 +210,7 @@ jobs:
             eq=api("GET",f"/v1/subscriptionPricePoints/{anchor_id}/equalizations",params={
               "filter[subscription]":sid,
               "filter[planType]":"UPFRONT",
+              "include":"territory",
               "limit":"8000"
             }).get("data",[])
             territory_to_pp={"FRA":anchor_id}
@@ -221,6 +222,7 @@ jobs:
               # Fallback: retry without the plan-type filter for standard subscriptions.
               eq=api("GET",f"/v1/subscriptionPricePoints/{anchor_id}/equalizations",params={
                 "filter[subscription]":sid,
+                "include":"territory",
                 "limit":"8000"
               }).get("data",[])
               territory_to_pp={"FRA":anchor_id}
