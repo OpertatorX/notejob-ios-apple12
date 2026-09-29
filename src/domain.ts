@@ -1,4 +1,4 @@
-import type { AppData, BusinessProfile, DocumentKind, DocumentTotals, QuoteDocument, SavedService } from './types';
+import type { AppData, BusinessProfile, DocumentKind, DocumentTotals, Language, QuoteDocument, SavedService } from './types';
 
 export const FREE_DOCUMENT_LIMIT = 3;
 
@@ -53,9 +53,27 @@ function defaultLocale(): string {
   catch { return 'en-US'; }
 }
 
+/**
+ * OX Invoice has two storefront languages: French for France and English
+ * everywhere else. The iPhone/iPad region is preferred over the UI language
+ * so a French device configured for the U.S. storefront still gets English.
+ * When a runtime does not expose a region, French is used only for a French
+ * locale; all other locales fall back to English.
+ */
+export function detectDeviceLanguage(locale = defaultLocale()): Language {
+  const normalized = String(locale || 'en-US').replace(/_/g, '-');
+  const parts = normalized.split('-').filter(Boolean);
+  const language = (parts[0] || 'en').toLowerCase();
+  const region = parts.slice(1).find(part => /^[A-Za-z]{2}$/.test(part))?.toUpperCase();
+
+  if (region === 'FR') return 'fr';
+  if (region) return 'en';
+  return language === 'fr' ? 'fr' : 'en';
+}
+
 export function blankBusiness(): BusinessProfile {
   const locale = defaultLocale().toLowerCase();
-  const language = locale.startsWith('fr') ? 'fr' : 'en';
+  const language = detectDeviceLanguage(locale);
   const currency = locale.startsWith('fr') ? 'EUR' : 'USD';
   return {
     name: '', email: '', phone: '', address: '', taxId: '', website: '', paymentDetails: '', logoDataUri: null,
@@ -97,7 +115,6 @@ export function effectiveStatus(doc: QuoteDocument, today = isoDate()): QuoteDoc
   return doc.status;
 }
 
-
 function inferServices(docs: QuoteDocument[]): SavedService[] {
   const seen = new Map<string, SavedService>();
   const sorted = [...docs].sort((a,b)=>a.updatedAt.localeCompare(b.updatedAt));
@@ -124,11 +141,18 @@ export function sanitizeLoadedData(raw: unknown): AppData {
   const base = initialData();
   if (!raw || typeof raw !== 'object') return base;
   const value = raw as Partial<AppData>;
+  const business = {
+    ...base.business,
+    ...(value.business ?? {}),
+    // Language is intentionally not persisted as a user preference.
+    // It follows the device region on every cold launch.
+    language: detectDeviceLanguage(),
+  };
   return {
     ...base,
     ...value,
     schemaVersion: 3,
-    business: { ...base.business, ...(value.business ?? {}) },
+    business,
     clients: Array.isArray(value.clients) ? value.clients : [],
     services: Array.isArray(value.services) ? value.services : inferServices(Array.isArray(value.documents) ? value.documents : []),
     documents: Array.isArray(value.documents) ? value.documents : [],
