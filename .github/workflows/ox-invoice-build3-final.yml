@@ -1,0 +1,92 @@
+name: OX Invoice Build 3 Final
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/ox-invoice-build3-final.yml
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: macos-26
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EXPO_PUBLIC_IAPKIT_API_KEY: ${{ secrets.OX_INVOICE_IAPKIT_KEY }}
+      EXPO_PUBLIC_APP_ENV: production
+    steps:
+      - name: Checkout OX Invoice build 3
+        uses: actions/checkout@v4
+        with:
+          ref: ox-invoice-release
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Select Xcode 26.4.1
+        shell: bash
+        run: |
+          set -euo pipefail
+          XCODE='/Applications/Xcode_26.4.1.app/Contents/Developer'
+          test -d "$XCODE"
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify exact release source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${EXPO_TOKEN:-}" || { echo 'EXPO_TOKEN missing'; exit 20; }
+          test -n "${EXPO_PUBLIC_IAPKIT_API_KEY:-}" || { echo 'OX_INVOICE_IAPKIT_KEY missing'; exit 21; }
+          test "$(node -p "require('./app.operatorx.json').build")" = "3"
+          test "$(node -p "require('./app.operatorx.json').bundleId")" = "com.operatorx.oxinvoice"
+          npx expo config --json > /tmp/ox-config.json
+          node - <<'NODE'
+          const fs=require('fs');
+          const cfg=JSON.parse(fs.readFileSync('/tmp/ox-config.json','utf8'));
+          const actual=cfg?.extra?.eas?.projectId || '';
+          const expected='a8ec463b-a530-41c9-af1f-c5499359f881';
+          if(actual!==expected) throw new Error('EAS project ID mismatch: '+actual);
+          console.log('EAS project verified:',actual);
+          NODE
+          npm run qa
+
+      - name: Build signed IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          VERSION="$(node -p "require('./app.operatorx.json').version")"
+          BUILD="$(node -p "require('./app.operatorx.json').build")"
+          IPA="./artifacts/OX-Invoice-${VERSION}-build${BUILD}.ipa"
+          echo "IPA_PATH=$IPA" >> "$GITHUB_ENV"
+          npx --yes eas-cli@latest build --platform ios --profile production --local --non-interactive --output "$IPA"
+          test -f "$IPA"
+          shasum -a 256 "$IPA" | tee ./artifacts/IPA_SHA256.txt
+
+      - name: Preserve IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: OX-Invoice-1.0-build3
+          path: |
+            artifacts/*.ipa
+            artifacts/IPA_SHA256.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Verify App Store Connect integration
+        run: npx --yes eas-cli@latest integrations:asc:status --json --non-interactive
+
+      - name: Submit build 3 to App Store Connect
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes eas-cli@latest submit --platform ios --profile production --path "$IPA_PATH" --non-interactive
