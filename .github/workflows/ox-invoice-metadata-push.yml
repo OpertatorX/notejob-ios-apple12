@@ -1,0 +1,28 @@
+name: OX Invoice App Store Metadata
+on:
+  push:
+    paths:
+      - .github/workflows/ox-invoice-metadata-push.yml
+permissions:
+  contents: read
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ox-invoice-release
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Verify App Store Connect link
+        run: npx --yes eas-cli@latest integrations:asc:status --json --non-interactive
+      - name: Validate App Store metadata
+        run: npx --yes eas-cli@latest metadata:lint --profile production
+      - name: Push FR and en-US metadata
+        run: npx --yes eas-cli@latest metadata:push --profile production --non-interactive
