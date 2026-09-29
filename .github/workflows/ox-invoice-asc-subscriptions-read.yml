@@ -49,6 +49,7 @@ jobs:
           nodes=[e["node"] for e in b["data"]["account"]["byName"]["appStoreConnectApiKeysPaginated"]["edges"]]
           meta=next((x for x in nodes if x.get("keyIdentifier")==key_identifier),None)
           if not meta: raise RuntimeError("EAS ASC key not found")
+          print("ASC_ISSUER_ID="+str(meta.get("issuerIdentifier","")))
 
           q2=r"""
           query Key($id:ID!){
