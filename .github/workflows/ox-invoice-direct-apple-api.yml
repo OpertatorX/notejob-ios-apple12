@@ -1,0 +1,188 @@
+name: OX Invoice Direct Apple Upload API
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/ox-invoice-direct-apple-api.yml
+permissions:
+  contents: read
+  actions: read
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      ASC_KEY_IDENTIFIER: 86PUKZ4ZVC
+      ASC_APP_ID: "6817043240"
+      EXPECTED_BUNDLE_ID: com.operatorx.oxinvoice
+      EXPECTED_VERSION: "1.0"
+      EXPECTED_BUILD: "4"
+    steps:
+      - name: Download existing build 4 IPA
+        uses: actions/download-artifact@v4
+        with:
+          name: OX-Invoice-IPA
+          path: artifacts
+          github-token: ${{ github.token }}
+          repository: OpertatorX/notejob-ios-apple12
+          run-id: 36618520456
+
+      - name: Install API client dependencies
+        run: python3 -m pip install --quiet pyjwt cryptography requests
+
+      - name: Upload build 4 directly with App Store Connect Build Upload API
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, time, zipfile
+          import requests, jwt
+
+          expo_token=os.environ["EXPO_TOKEN"]
+          key_identifier=os.environ["ASC_KEY_IDENTIFIER"]
+          app_id=os.environ["ASC_APP_ID"]
+          expected_bundle=os.environ["EXPECTED_BUNDLE_ID"]
+          expected_version=os.environ["EXPECTED_VERSION"]
+          expected_build=os.environ["EXPECTED_BUILD"]
+
+          ipa_files=list(pathlib.Path("artifacts").rglob("*.ipa"))
+          if len(ipa_files) != 1:
+              raise RuntimeError(f"Expected exactly one IPA, found {len(ipa_files)}")
+          ipa=ipa_files[0]
+
+          with zipfile.ZipFile(ipa) as z:
+              plist_names=[n for n in z.namelist() if n.startswith("Payload/") and n.endswith(".app/Info.plist")]
+              if len(plist_names) != 1:
+                  raise RuntimeError("Could not resolve app Info.plist from IPA")
+              raw=z.read(plist_names[0])
+          import plistlib
+          info=plistlib.loads(raw)
+          bundle=str(info.get("CFBundleIdentifier",""))
+          version=str(info.get("CFBundleShortVersionString",""))
+          build=str(info.get("CFBundleVersion",""))
+          print(f"IPA identity: {bundle} version {version} build {build}")
+          if (bundle,version,build)!=(expected_bundle,expected_version,expected_build):
+              raise RuntimeError("IPA identity mismatch")
+
+          gql="https://api.expo.dev/graphql"
+          gh={"authorization":f"Bearer {expo_token}","content-type":"application/json"}
+          q1=r"""
+          query Keys($accountName:String!){
+            account {
+              byName(accountName:$accountName){
+                appStoreConnectApiKeysPaginated(first:100){
+                  edges { node { id issuerIdentifier keyIdentifier name roles } }
+                }
+              }
+            }
+          }
+          """
+          r=requests.post(gql,headers=gh,json={"query":q1,"variables":{"accountName":"operatorx"}},timeout=30)
+          r.raise_for_status()
+          nodes=[e["node"] for e in r.json()["data"]["account"]["byName"]["appStoreConnectApiKeysPaginated"]["edges"]]
+          meta=next((x for x in nodes if x.get("keyIdentifier")==key_identifier),None)
+          if not meta:
+              raise RuntimeError("ASC API key not found in EAS")
+
+          q2=r"""
+          query Key($id:ID!){
+            appStoreConnectApiKey {
+              byId(id:$id){ id issuerIdentifier keyIdentifier keyP8 }
+            }
+          }
+          """
+          r=requests.post(gql,headers=gh,json={"query":q2,"variables":{"id":meta["id"]}},timeout=30)
+          r.raise_for_status()
+          key=r.json()["data"]["appStoreConnectApiKey"]["byId"]
+          issuer=key.get("issuerIdentifier") or meta.get("issuerIdentifier")
+          p8=key.get("keyP8")
+          if not issuer or not p8:
+              raise RuntimeError("ASC issuer/private key missing")
+
+          now=int(time.time())
+          claims={"iat":now,"exp":now+900,"aud":"appstoreconnect-v1","iss":issuer}
+          token=jwt.encode(claims,p8,algorithm="ES256",headers={"kid":key_identifier,"typ":"JWT"})
+          ah={"Authorization":f"Bearer {token}","Content-Type":"application/json"}
+          base="https://api.appstoreconnect.apple.com"
+
+          def api(method,path,body=None):
+              rr=requests.request(method,base+path,headers=ah,json=body,timeout=60)
+              if rr.status_code<200 or rr.status_code>=300:
+                  try:
+                      errs=rr.json().get("errors",[])
+                      detail=" | ".join(f"{e.get('code','')}:{e.get('title','')}:{e.get('detail','')}" for e in errs[:4])
+                  except Exception:
+                      detail=rr.text[:1000]
+                  raise RuntimeError(f"{method} {path} HTTP {rr.status_code}: {detail}")
+              return rr.json() if rr.content else {}
+
+          build_upload=api("POST","/v1/buildUploads",{
+              "data":{
+                  "type":"buildUploads",
+                  "attributes":{
+                      "cfBundleVersion":build,
+                      "cfBundleShortVersionString":version,
+                      "platform":"IOS"
+                  },
+                  "relationships":{
+                      "app":{"data":{"type":"apps","id":app_id}}
+                  }
+              }
+          })
+          upload_id=build_upload["data"]["id"]
+          print("BUILD_UPLOAD_ID="+upload_id)
+
+          upload_file=api("POST","/v1/buildUploadFiles",{
+              "data":{
+                  "type":"buildUploadFiles",
+                  "attributes":{
+                      "fileName":ipa.name,
+                      "fileSize":ipa.stat().st_size,
+                      "uti":"com.apple.ipa",
+                      "assetType":"ASSET"
+                  },
+                  "relationships":{
+                      "buildUpload":{"data":{"type":"buildUploads","id":upload_id}}
+                  }
+              }
+          })
+          file_id=upload_file["data"]["id"]
+          ops=upload_file["data"]["attributes"].get("uploadOperations") or []
+          if not ops:
+              raise RuntimeError("Apple returned no upload operations")
+          print("UPLOAD_PARTS="+str(len(ops)))
+
+          with ipa.open("rb") as f:
+              for i,op in enumerate(ops,1):
+                  f.seek(int(op["offset"]))
+                  chunk=f.read(int(op["length"]))
+                  headers={h["name"]:h["value"] for h in op.get("requestHeaders",[]) if h.get("name")}
+                  rr=requests.request(op.get("method","PUT"),op["url"],headers=headers,data=chunk,timeout=300)
+                  if rr.status_code<200 or rr.status_code>=300:
+                      raise RuntimeError(f"Binary upload part {i} failed HTTP {rr.status_code}: {rr.text[:500]}")
+                  print(f"PART_{i}_OK")
+
+          committed=api("PATCH",f"/v1/buildUploadFiles/{file_id}",{
+              "data":{
+                  "type":"buildUploadFiles",
+                  "id":file_id,
+                  "attributes":{"uploaded":True}
+              }
+          })
+          state=committed.get("data",{}).get("attributes",{}).get("assetDeliveryState",{}).get("state","")
+          print("FILE_STATE="+str(state))
+
+          for _ in range(30):
+              time.sleep(10)
+              status=api("GET",f"/v1/buildUploads/{upload_id}")
+              st=status.get("data",{}).get("attributes",{}).get("state",{})
+              state=st.get("state","") if isinstance(st,dict) else str(st)
+              print("BUILD_UPLOAD_STATE="+state)
+              if state in ("COMPLETE","FAILED"):
+                  if state=="FAILED":
+                      raise RuntimeError("Apple build upload failed: "+json.dumps(st))
+                  break
+          else:
+              print("Upload accepted; Apple is still processing.")
+          PY
