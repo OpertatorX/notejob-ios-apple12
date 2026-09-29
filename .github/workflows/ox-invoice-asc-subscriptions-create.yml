@@ -41,7 +41,7 @@ jobs:
               "period":"SIX_MONTHS",
               "price":"9.99",
               "localizations":{
-                "en-US":("OX Invoice Pro — 6 Months","Unlimited estimates and invoices for 6 months."),
+                "en-US":("OX Invoice Pro — 6 Months","Unlimited estimates & invoices for 6 months."),
                 "fr-FR":("OX Invoice Pro — 6 mois","Devis et factures illimités pendant 6 mois.")
               }
             },
@@ -181,9 +181,10 @@ jobs:
 
             # Subscription localizations.
             locs=api("GET",f"/v1/subscriptions/{sid}/subscriptionLocalizations",params={"limit":"200"}).get("data",[])
-            loc_locales={x.get("attributes",{}).get("locale") for x in locs}
+            loc_by_locale={x.get("attributes",{}).get("locale"):x for x in locs}
             for locale,(name,desc) in product["localizations"].items():
-              if locale not in loc_locales:
+              existing_loc=loc_by_locale.get(locale)
+              if not existing_loc:
                 api("POST","/v1/subscriptionLocalizations",payload={
                   "data":{
                     "type":"subscriptionLocalizations",
@@ -192,6 +193,17 @@ jobs:
                   }
                 })
                 print("SUB_LOCALIZATION_CREATED="+pid+"|"+locale)
+              else:
+                current=existing_loc.get("attributes",{})
+                if current.get("name")!=name or current.get("description")!=desc:
+                  api("PATCH",f"/v1/subscriptionLocalizations/{existing_loc['id']}",payload={
+                    "data":{
+                      "type":"subscriptionLocalizations",
+                      "id":existing_loc["id"],
+                      "attributes":{"name":name,"description":desc}
+                    }
+                  })
+                  print("SUB_LOCALIZATION_UPDATED="+pid+"|"+locale)
 
             # Find exact French anchor price point.
             pps=api("GET",f"/v1/subscriptions/{sid}/pricePoints",params={
