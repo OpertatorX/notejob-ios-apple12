@@ -18,12 +18,12 @@ jobs:
           ref: ox-invoice-release
       - name: Install Python deps
         run: python3 -m pip install --quiet pyjwt cryptography requests
-      - name: Read subscriptions from App Store Connect
+      - name: Audit subscriptions from App Store Connect
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import os, time, json, sys
+          import os, time, sys
           import requests, jwt
 
           expo_token=os.environ["EXPO_TOKEN"]
@@ -45,19 +45,10 @@ jobs:
           """
           r=requests.post(gql,headers=h,json={"query":q1,"variables":{"accountName":"operatorx"}},timeout=30)
           r.raise_for_status()
-          body=r.json()
-          if body.get("errors"):
-              print("EXPO_GQL_ERROR", body["errors"][0].get("message",""))
-              sys.exit(20)
-          edges=body["data"]["account"]["byName"]["appStoreConnectApiKeysPaginated"]["edges"]
-          matches=[e["node"] for e in edges if e["node"].get("keyIdentifier")==key_identifier]
-          if not matches:
-              print("ASC_EAS_KEY=NOT_FOUND")
-              sys.exit(21)
-          meta=matches[0]
-          print("ASC_EAS_KEY=FOUND")
-          print("ASC_KEY_NAME="+str(meta.get("name","")))
-          print("ASC_KEY_ROLES="+",".join(meta.get("roles") or []))
+          b=r.json()
+          nodes=[e["node"] for e in b["data"]["account"]["byName"]["appStoreConnectApiKeysPaginated"]["edges"]]
+          meta=next((x for x in nodes if x.get("keyIdentifier")==key_identifier),None)
+          if not meta: raise RuntimeError("EAS ASC key not found")
 
           q2=r"""
           query Key($id:ID!){
@@ -68,49 +59,61 @@ jobs:
           """
           r=requests.post(gql,headers=h,json={"query":q2,"variables":{"id":meta["id"]}},timeout=30)
           r.raise_for_status()
-          body=r.json()
-          if body.get("errors"):
-              print("EXPO_GQL_KEY_ERROR", body["errors"][0].get("message",""))
-              sys.exit(22)
-          key=body["data"]["appStoreConnectApiKey"]["byId"]
-          issuer=key.get("issuerIdentifier")
-          p8=key.get("keyP8")
-          if not p8:
-              print("ASC_PRIVATE_KEY=UNAVAILABLE")
-              sys.exit(23)
-
+          key=r.json()["data"]["appStoreConnectApiKey"]["byId"]
           now=int(time.time())
           claims={"iat":now,"exp":now+900,"aud":"appstoreconnect-v1"}
-          if issuer:
-              claims["iss"]=issuer
-          token=jwt.encode(claims,p8,algorithm="ES256",headers={"kid":key_identifier,"typ":"JWT"})
+          if key.get("issuerIdentifier"): claims["iss"]=key["issuerIdentifier"]
+          token=jwt.encode(claims,key["keyP8"],algorithm="ES256",headers={"kid":key_identifier,"typ":"JWT"})
           ah={"Authorization":f"Bearer {token}"}
 
-          url=f"https://api.appstoreconnect.apple.com/v1/apps/{app_id}/subscriptionGroups"
-          rr=requests.get(url,headers=ah,params={"fields[subscriptionGroups]":"referenceName","limit":"200"},timeout=30)
-          print("APPLE_GROUPS_HTTP="+str(rr.status_code))
-          if rr.status_code != 200:
+          def get(path,params=None,allow404=False):
+            rr=requests.get("https://api.appstoreconnect.apple.com"+path,headers=ah,params=params,timeout=30)
+            if allow404 and rr.status_code==404: return None
+            if rr.status_code!=200:
               try:
-                  err=rr.json()
-                  for e in err.get("errors",[])[:3]:
-                      print("APPLE_ERROR="+str(e.get("code",""))+"|"+str(e.get("title",""))+"|"+str(e.get("detail","")))
-              except Exception:
-                  pass
-              sys.exit(24)
+                errs=rr.json().get("errors",[])
+                detail=" | ".join(f"{e.get('code','')}:{e.get('title','')}:{e.get('detail','')}" for e in errs[:3])
+              except Exception: detail=rr.text[:300]
+              raise RuntimeError(f"GET {path} HTTP {rr.status_code}: {detail}")
+            return rr.json()
 
-          groups=rr.json().get("data",[])
-          print("SUBSCRIPTION_GROUP_COUNT="+str(len(groups)))
+          groups=get(f"/v1/apps/{app_id}/subscriptionGroups",{"fields[subscriptionGroups]":"referenceName","limit":"200"}).get("data",[])
+          print("GROUP_COUNT="+str(len(groups)))
           for g in groups:
-              print("GROUP="+g["id"]+"|"+str(g.get("attributes",{}).get("referenceName","")))
-              sr=requests.get(
-                  f"https://api.appstoreconnect.apple.com/v1/subscriptionGroups/{g['id']}/subscriptions",
-                  headers=ah,
-                  params={"fields[subscriptions]":"name,productId,subscriptionPeriod,groupLevel,state","limit":"200"},
-                  timeout=30
-              )
-              print("SUBSCRIPTIONS_HTTP="+str(sr.status_code))
-              if sr.status_code==200:
-                  for s in sr.json().get("data",[]):
-                      a=s.get("attributes",{})
-                      print("SUB="+s["id"]+"|"+str(a.get("productId",""))+"|"+str(a.get("subscriptionPeriod",""))+"|level="+str(a.get("groupLevel",""))+"|state="+str(a.get("state","")))
+            gid=g["id"]
+            print("GROUP="+gid+"|"+str(g.get("attributes",{}).get("referenceName","")))
+            glocs=get(f"/v1/subscriptionGroups/{gid}/subscriptionGroupLocalizations",{"limit":"200"}).get("data",[])
+            print("GROUP_LOCALES="+",".join(sorted(str(x.get("attributes",{}).get("locale","")) for x in glocs)))
+
+            subs=get(f"/v1/subscriptionGroups/{gid}/subscriptions",{
+              "fields[subscriptions]":"name,productId,subscriptionPeriod,groupLevel,state,reviewNote,familySharable",
+              "limit":"200"
+            }).get("data",[])
+            print("SUB_COUNT="+str(len(subs)))
+            for s in subs:
+              sid=s["id"]; a=s.get("attributes",{})
+              print("SUB="+sid+"|"+str(a.get("productId",""))+"|"+str(a.get("subscriptionPeriod",""))+"|level="+str(a.get("groupLevel",""))+"|state="+str(a.get("state","")))
+              print("REVIEW_NOTE_PRESENT="+str(bool(str(a.get("reviewNote","")).strip())).lower())
+
+              locs=get(f"/v1/subscriptions/{sid}/subscriptionLocalizations",{"limit":"200"}).get("data",[])
+              print("SUB_LOCALES="+",".join(sorted(str(x.get("attributes",{}).get("locale","")) for x in locs)))
+              for loc in locs:
+                la=loc.get("attributes",{})
+                print("LOCALIZATION="+str(la.get("locale",""))+"|name_len="+str(len(str(la.get("name",""))))+"|desc_len="+str(len(str(la.get("description","")))))
+
+              plans=get(f"/v1/subscriptions/{sid}/planAvailabilities",{
+                "fields[subscriptionPlanAvailabilities]":"availableInNewTerritories,planType",
+                "limit":"200"
+              }).get("data",[])
+              print("PLAN_COUNT="+str(len(plans)))
+              for p in plans:
+                pa=p.get("attributes",{})
+                print("PLAN="+str(pa.get("planType",""))+"|newTerritories="+str(pa.get("availableInNewTerritories","")))
+
+              prices=get(f"/v1/subscriptions/{sid}/prices",{"filter[planType]":"UPFRONT","limit":"200"}).get("data",[])
+              print("PRICE_ROWS="+str(len(prices)))
+
+              shot=get(f"/v1/subscriptions/{sid}/relationships/appStoreReviewScreenshot")
+              sd=shot.get("data") if shot else None
+              print("REVIEW_SCREENSHOT="+("PRESENT" if sd else "MISSING"))
           PY
