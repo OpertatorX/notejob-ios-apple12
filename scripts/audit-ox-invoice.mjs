@@ -21,11 +21,13 @@ add('Authoritative current entitlement restore',purchase.includes('onlyIncludeAc
 add('Native restore sync before entitlement refresh',purchase.includes('restorePurchases({ onlyIncludeActiveItemsIOS: true })'));
 add('Server verification before entitlement',purchase.includes('verifyPurchaseWithProvider') && purchase.indexOf('verifyStorePurchase(purchase)') < purchase.indexOf('onEntitlement(true)'));
 add('Finish transaction only after verified entitlement',purchase.indexOf('onEntitlement(true)') < purchase.indexOf('finishTransaction({ purchase, isConsumable: false })'));
-add('Store-verified IAP product identity required',purchase.includes('verified.productId != null') && purchase.includes('verified.productId === purchase.productId'));
+add('StoreKit product allow-list before verification',purchase.includes('ALL_PRODUCT_IDS.includes(purchase.productId') && purchase.indexOf('ALL_PRODUCT_IDS.includes(purchase.productId') < purchase.indexOf('verifyPurchaseWithProvider'));
 for(const id of ['com.operatorx.oxinvoice.pro.6months','com.operatorx.oxinvoice.pro.yearly']) add(`IAP product ${id}`,purchase.includes(id));
 const appSource=read('App.tsx');
 add('Business setup gate before first document',appSource.includes('business.name.trim()') && appSource.includes("type: 'business'"));
 const domain=read('src/domain.ts');
+const businessScreen=read('src/screens/BusinessScreen.tsx');
+add('Automatic FR/EN app language by device region',domain.includes('detectDeviceLanguage') && domain.includes("region === 'FR'") && businessScreen.includes('automatic from the iPhone region') && !businessScreen.includes("select<Language>"));
 add('New account has no sample data',domain.includes('documents: []')&&domain.includes('clients: []')&&domain.includes('services: []'));
 add('Reusable service catalog',exists('src/screens/ServicesScreen.tsx')&&appSource.includes("case 'services'"));
 add('New account dashboard numbers start at zero',domain.includes('freeDocumentsCreated: 0')&&domain.includes('defaultTaxPct: 0'));
