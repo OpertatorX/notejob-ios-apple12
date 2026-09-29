@@ -1,0 +1,116 @@
+name: OX Invoice ASC Subscriptions Read
+on:
+  push:
+    paths:
+      - .github/workflows/ox-invoice-asc-subscriptions-read.yml
+permissions:
+  contents: read
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      ASC_KEY_IDENTIFIER: 86PUKZ4ZVC
+      ASC_APP_ID: "6817043240"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ox-invoice-release
+      - name: Install Python deps
+        run: python3 -m pip install --quiet pyjwt cryptography requests
+      - name: Read subscriptions from App Store Connect
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, time, json, sys
+          import requests, jwt
+
+          expo_token=os.environ["EXPO_TOKEN"]
+          key_identifier=os.environ["ASC_KEY_IDENTIFIER"]
+          app_id=os.environ["ASC_APP_ID"]
+          gql="https://api.expo.dev/graphql"
+          h={"authorization":f"Bearer {expo_token}","content-type":"application/json"}
+
+          q1=r"""
+          query Keys($accountName:String!){
+            account {
+              byName(accountName:$accountName){
+                appStoreConnectApiKeysPaginated(first:100){
+                  edges { node { id issuerIdentifier keyIdentifier name roles } }
+                }
+              }
+            }
+          }
+          """
+          r=requests.post(gql,headers=h,json={"query":q1,"variables":{"accountName":"operatorx"}},timeout=30)
+          r.raise_for_status()
+          body=r.json()
+          if body.get("errors"):
+              print("EXPO_GQL_ERROR", body["errors"][0].get("message",""))
+              sys.exit(20)
+          edges=body["data"]["account"]["byName"]["appStoreConnectApiKeysPaginated"]["edges"]
+          matches=[e["node"] for e in edges if e["node"].get("keyIdentifier")==key_identifier]
+          if not matches:
+              print("ASC_EAS_KEY=NOT_FOUND")
+              sys.exit(21)
+          meta=matches[0]
+          print("ASC_EAS_KEY=FOUND")
+          print("ASC_KEY_NAME="+str(meta.get("name","")))
+          print("ASC_KEY_ROLES="+",".join(meta.get("roles") or []))
+
+          q2=r"""
+          query Key($id:ID!){
+            appStoreConnectApiKey {
+              byId(id:$id){ id issuerIdentifier keyIdentifier keyP8 }
+            }
+          }
+          """
+          r=requests.post(gql,headers=h,json={"query":q2,"variables":{"id":meta["id"]}},timeout=30)
+          r.raise_for_status()
+          body=r.json()
+          if body.get("errors"):
+              print("EXPO_GQL_KEY_ERROR", body["errors"][0].get("message",""))
+              sys.exit(22)
+          key=body["data"]["appStoreConnectApiKey"]["byId"]
+          issuer=key.get("issuerIdentifier")
+          p8=key.get("keyP8")
+          if not p8:
+              print("ASC_PRIVATE_KEY=UNAVAILABLE")
+              sys.exit(23)
+
+          now=int(time.time())
+          claims={"iat":now,"exp":now+900,"aud":"appstoreconnect-v1"}
+          if issuer:
+              claims["iss"]=issuer
+          token=jwt.encode(claims,p8,algorithm="ES256",headers={"kid":key_identifier,"typ":"JWT"})
+          ah={"Authorization":f"Bearer {token}"}
+
+          url=f"https://api.appstoreconnect.apple.com/v1/apps/{app_id}/subscriptionGroups"
+          rr=requests.get(url,headers=ah,params={"fields[subscriptionGroups]":"referenceName","limit":"200"},timeout=30)
+          print("APPLE_GROUPS_HTTP="+str(rr.status_code))
+          if rr.status_code != 200:
+              try:
+                  err=rr.json()
+                  for e in err.get("errors",[])[:3]:
+                      print("APPLE_ERROR="+str(e.get("code",""))+"|"+str(e.get("title",""))+"|"+str(e.get("detail","")))
+              except Exception:
+                  pass
+              sys.exit(24)
+
+          groups=rr.json().get("data",[])
+          print("SUBSCRIPTION_GROUP_COUNT="+str(len(groups)))
+          for g in groups:
+              print("GROUP="+g["id"]+"|"+str(g.get("attributes",{}).get("referenceName","")))
+              sr=requests.get(
+                  f"https://api.appstoreconnect.apple.com/v1/subscriptionGroups/{g['id']}/subscriptions",
+                  headers=ah,
+                  params={"fields[subscriptions]":"name,productId,subscriptionPeriod,groupLevel,state","limit":"200"},
+                  timeout=30
+              )
+              print("SUBSCRIPTIONS_HTTP="+str(sr.status_code))
+              if sr.status_code==200:
+                  for s in sr.json().get("data",[]):
+                      a=s.get("attributes",{})
+                      print("SUB="+s["id"]+"|"+str(a.get("productId",""))+"|"+str(a.get("subscriptionPeriod",""))+"|level="+str(a.get("groupLevel",""))+"|state="+str(a.get("state","")))
+          PY
