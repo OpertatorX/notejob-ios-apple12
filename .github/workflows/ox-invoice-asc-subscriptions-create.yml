@@ -145,7 +145,7 @@ jobs:
                 "data":{
                   "type":"subscriptionGroupLocalizations",
                   "attributes":{"locale":locale,"name":"OX Invoice Pro"},
-                  "relationships":{"subscriptionGroup":{"data":{"type":"subscriptionGroups","id":gid}}}
+                  "relationships":{"group":{"data":{"type":"subscriptionGroups","id":gid}}}
                 }
               })
               print("GROUP_LOCALIZATION_CREATED="+locale)
