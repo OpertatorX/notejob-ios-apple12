@@ -145,7 +145,7 @@ jobs:
                 "data":{
                   "type":"subscriptionGroupLocalizations",
                   "attributes":{"locale":locale,"name":"OX Invoice Pro"},
-                  "relationships":{"group":{"data":{"type":"subscriptionGroups","id":gid}}}
+                  "relationships":{"subscriptionGroup":{"data":{"type":"subscriptionGroups","id":gid}}}
                 }
               })
               print("GROUP_LOCALIZATION_CREATED="+locale)
@@ -171,7 +171,7 @@ jobs:
                     "groupLevel":1,
                     "reviewNote":"OX Invoice Pro unlocks unlimited estimate and invoice creation while the subscription is active."
                   },
-                  "relationships":{"subscriptionGroup":{"data":{"type":"subscriptionGroups","id":gid}}}
+                  "relationships":{"group":{"data":{"type":"subscriptionGroups","id":gid}}}
                 }
               })["data"]
               print("SUB_CREATED="+pid+"|"+sub["id"])
