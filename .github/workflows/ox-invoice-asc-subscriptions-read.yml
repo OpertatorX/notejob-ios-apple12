@@ -1,5 +1,5 @@
 name: OX Invoice ASC Subscriptions Read
-# diagnostic refresh 2026-09-29 10:53
+# diagnostic refresh 2026-09-29 14:24
 on:
   push:
     paths:
@@ -78,6 +78,20 @@ jobs:
               except Exception: detail=rr.text[:300]
               raise RuntimeError(f"GET {path} HTTP {rr.status_code}: {detail}")
             return rr.json()
+
+          bundle=get("/v1/bundleIds",{
+            "filter[identifier]":"com.operatorx.oxinvoice",
+            "include":"bundleIdCapabilities",
+            "fields[bundleIds]":"identifier,name,platform,bundleIdCapabilities",
+            "fields[bundleIdCapabilities]":"capabilityType,settings",
+            "limit":"10"
+          })
+          print("BUNDLE_ID_MATCHES="+str(len(bundle.get("data",[]))))
+          for b in bundle.get("data",[]):
+            print("BUNDLE="+b["id"]+"|"+str(b.get("attributes",{}).get("identifier",""))+"|"+str(b.get("attributes",{}).get("platform","")))
+          caps=[x for x in bundle.get("included",[]) if x.get("type")=="bundleIdCapabilities"]
+          print("BUNDLE_CAPABILITIES="+",".join(sorted(str(x.get("attributes",{}).get("capabilityType","")) for x in caps)))
+          print("IAP_CAPABILITY="+("PRESENT" if any(x.get("attributes",{}).get("capabilityType")=="IN_APP_PURCHASE" for x in caps) else "MISSING"))
 
           groups=get(f"/v1/apps/{app_id}/subscriptionGroups",{"fields[subscriptionGroups]":"referenceName","limit":"200"}).get("data",[])
           print("GROUP_COUNT="+str(len(groups)))
