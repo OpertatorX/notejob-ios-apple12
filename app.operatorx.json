@@ -5,7 +5,7 @@
   "type": "business",
   "bundleId": "com.operatorx.oxinvoice",
   "version": "1.0",
-  "build": 2,
+  "build": 3,
   "demo": false,
   "languages": [
     "fr-FR",
