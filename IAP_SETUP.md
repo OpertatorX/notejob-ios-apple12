@@ -83,7 +83,7 @@ OX Invoice must:
 4. Require `isValid === true`.
 5. Require state `entitled`.
 6. Require store `apple` on iOS.
-7. Require the store-verified `productId` to exactly match one of the two expected OX Invoice products.
+7. Require the native StoreKit `purchase.productId` to exactly match one of the two expected OX Invoice products before sending the signed purchase JWS for verification.
 8. Grant Pro only after successful verification.
 9. Finish the StoreKit transaction only after verification.
 10. Restore/sync purchases and then reverify current active entitlements.
