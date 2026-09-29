@@ -45,6 +45,38 @@
         "supportUrl": "https://operatorx-ox-invoice.vercel.app/fr-FR/support.html",
         "privacyPolicyUrl": "https://operatorx-ox-invoice.vercel.app/fr-FR/privacy.html"
       }
-    }
+    },
+    "categories": [
+      "BUSINESS",
+      "PRODUCTIVITY"
+    ],
+    "advisory": {
+      "alcoholTobaccoOrDrugUseOrReferences": "NONE",
+      "contests": "NONE",
+      "gamblingSimulated": "NONE",
+      "horrorOrFearThemes": "NONE",
+      "matureOrSuggestiveThemes": "NONE",
+      "medicalOrTreatmentInformation": "NONE",
+      "profanityOrCrudeHumor": "NONE",
+      "sexualContentGraphicAndNudity": "NONE",
+      "sexualContentOrNudity": "NONE",
+      "violenceCartoonOrFantasy": "NONE",
+      "violenceRealistic": "NONE",
+      "violenceRealisticProlongedGraphicOrSadistic": "NONE",
+      "gambling": false,
+      "unrestrictedWebAccess": false,
+      "kidsAgeBand": null,
+      "ageRatingOverride": "NONE",
+      "koreaAgeRatingOverride": "NONE",
+      "lootBox": false,
+      "advertising": false,
+      "ageAssurance": false,
+      "gunsOrOtherWeapons": "NONE",
+      "healthOrWellnessTopics": false,
+      "messagingAndChat": false,
+      "parentalControls": false,
+      "userGeneratedContent": false
+    },
+    "copyright": "2026 Luc Bigorgne"
   }
 }
