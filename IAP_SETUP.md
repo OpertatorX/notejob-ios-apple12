@@ -2,6 +2,18 @@
 
 This checklist is a release blocker for OX Invoice 1.0. Do not submit to App Review until every REQUIRED item is complete.
 
+## Live App Store Connect identifiers
+
+- App Apple ID: `6817043240`
+- Subscription group Apple ID: `22423818`
+- 6-month subscription Apple ID: `6817230082`
+- Annual subscription Apple ID: `6817230898`
+- App Store Connect Issuer ID: `635b6c9b-5262-4d54-a022-7f23964370f6`
+- App Store Connect metadata: FR + en-US synced
+- Subscription prices: configured across 175 territories
+- Current subscription blocker: App Review screenshot missing for each subscription
+- Final production/TestFlight binary: OX Invoice 1.0 (2)
+
 ## Store identity
 
 - Bundle ID: `com.operatorx.oxinvoice`
