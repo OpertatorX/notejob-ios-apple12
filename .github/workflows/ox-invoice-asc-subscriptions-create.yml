@@ -1,0 +1,308 @@
+name: OX Invoice ASC Subscriptions Create
+on:
+  push:
+    paths:
+      - .github/workflows/ox-invoice-asc-subscriptions-create.yml
+permissions:
+  contents: read
+jobs:
+  create:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      ASC_KEY_IDENTIFIER: 86PUKZ4ZVC
+      ASC_APP_ID: "6817043240"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ox-invoice-release
+      - name: Install Python deps
+        run: python3 -m pip install --quiet pyjwt cryptography requests
+      - name: Create and configure OX Invoice subscriptions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, time, sys, decimal
+          import requests, jwt
+
+          EXPO_TOKEN=os.environ["EXPO_TOKEN"]
+          KEY_ID=os.environ["ASC_KEY_IDENTIFIER"]
+          APP_ID=os.environ["ASC_APP_ID"]
+          EXPO_GQL="https://api.expo.dev/graphql"
+          APPLE="https://api.appstoreconnect.apple.com"
+          ACCOUNT="operatorx"
+          GROUP_NAME="OX Invoice Pro"
+
+          PRODUCTS=[
+            {
+              "productId":"com.operatorx.oxinvoice.pro.6months",
+              "name":"OX Invoice Pro 6 Months",
+              "period":"SIX_MONTHS",
+              "price":"9.99",
+              "localizations":{
+                "en-US":("OX Invoice Pro — 6 Months","Unlimited estimates and invoices for 6 months."),
+                "fr-FR":("OX Invoice Pro — 6 mois","Devis et factures illimités pendant 6 mois.")
+              }
+            },
+            {
+              "productId":"com.operatorx.oxinvoice.pro.yearly",
+              "name":"OX Invoice Pro Annual",
+              "period":"ONE_YEAR",
+              "price":"16.99",
+              "localizations":{
+                "en-US":("OX Invoice Pro — Annual","Unlimited estimates and invoices for 1 year."),
+                "fr-FR":("OX Invoice Pro — Annuel","Devis et factures illimités pendant 1 an.")
+              }
+            }
+          ]
+
+          # Retrieve the EAS-managed ASC key without printing private material.
+          eh={"authorization":f"Bearer {EXPO_TOKEN}","content-type":"application/json"}
+          q1=r"""
+          query Keys($accountName:String!){
+            account {
+              byName(accountName:$accountName){
+                appStoreConnectApiKeysPaginated(first:100){
+                  edges { node { id issuerIdentifier keyIdentifier name roles } }
+                }
+              }
+            }
+          }
+          """
+          r=requests.post(EXPO_GQL,headers=eh,json={"query":q1,"variables":{"accountName":ACCOUNT}},timeout=30)
+          r.raise_for_status()
+          b=r.json()
+          if b.get("errors"):
+            raise RuntimeError("Expo key-list query failed: "+b["errors"][0].get("message",""))
+          nodes=[e["node"] for e in b["data"]["account"]["byName"]["appStoreConnectApiKeysPaginated"]["edges"]]
+          matches=[x for x in nodes if x.get("keyIdentifier")==KEY_ID]
+          if not matches:
+            raise RuntimeError("EAS ASC API key not found")
+          meta=matches[0]
+          print("EAS_ASC_KEY=FOUND")
+          print("EAS_ASC_ROLE="+",".join(meta.get("roles") or []))
+
+          q2=r"""
+          query Key($id:ID!){
+            appStoreConnectApiKey {
+              byId(id:$id){ id issuerIdentifier keyIdentifier keyP8 }
+            }
+          }
+          """
+          r=requests.post(EXPO_GQL,headers=eh,json={"query":q2,"variables":{"id":meta["id"]}},timeout=30)
+          r.raise_for_status()
+          b=r.json()
+          if b.get("errors"):
+            raise RuntimeError("Expo key query failed: "+b["errors"][0].get("message",""))
+          key=b["data"]["appStoreConnectApiKey"]["byId"]
+          if not key.get("keyP8"):
+            raise RuntimeError("EAS private ASC key unavailable")
+
+          now=int(time.time())
+          claims={"iat":now,"exp":now+1100,"aud":"appstoreconnect-v1"}
+          if key.get("issuerIdentifier"):
+            claims["iss"]=key["issuerIdentifier"]
+          token=jwt.encode(claims,key["keyP8"],algorithm="ES256",headers={"kid":KEY_ID,"typ":"JWT"})
+          ah={"Authorization":f"Bearer {token}","Content-Type":"application/json"}
+
+          def api(method,path,*,params=None,payload=None,ok=(200,201,204)):
+            resp=requests.request(method,APPLE+path,headers=ah,params=params,json=payload,timeout=45)
+            if resp.status_code not in ok:
+              detail=""
+              try:
+                errs=resp.json().get("errors",[])
+                detail=" | ".join(f"{e.get('code','')}:{e.get('title','')}:{e.get('detail','')}" for e in errs[:3])
+              except Exception:
+                detail=resp.text[:500]
+              raise RuntimeError(f"Apple {method} {path} HTTP {resp.status_code}: {detail}")
+            if resp.status_code==204 or not resp.content:
+              return {}
+            return resp.json()
+
+          # Ensure group.
+          groups=api("GET",f"/v1/apps/{APP_ID}/subscriptionGroups",params={"fields[subscriptionGroups]":"referenceName","limit":"200"}).get("data",[])
+          group=next((g for g in groups if g.get("attributes",{}).get("referenceName")==GROUP_NAME),None)
+          if not group:
+            group=api("POST","/v1/subscriptionGroups",payload={
+              "data":{
+                "type":"subscriptionGroups",
+                "attributes":{"referenceName":GROUP_NAME},
+                "relationships":{"app":{"data":{"type":"apps","id":APP_ID}}}
+              }
+            })["data"]
+            print("GROUP_CREATED="+group["id"])
+          else:
+            print("GROUP_REUSED="+group["id"])
+          gid=group["id"]
+
+          # Group localizations (v1 remains accepted by ASC; idempotent).
+          glocs=api("GET",f"/v1/subscriptionGroups/{gid}/subscriptionGroupLocalizations",params={"limit":"200"}).get("data",[])
+          gloc_locales={x.get("attributes",{}).get("locale") for x in glocs}
+          for locale in ("en-US","fr-FR"):
+            if locale not in gloc_locales:
+              api("POST","/v1/subscriptionGroupLocalizations",payload={
+                "data":{
+                  "type":"subscriptionGroupLocalizations",
+                  "attributes":{"locale":locale,"name":"OX Invoice Pro"},
+                  "relationships":{"subscriptionGroup":{"data":{"type":"subscriptionGroups","id":gid}}}
+                }
+              })
+              print("GROUP_LOCALIZATION_CREATED="+locale)
+
+          # Existing subscriptions.
+          existing=api("GET",f"/v1/subscriptionGroups/{gid}/subscriptions",params={
+            "fields[subscriptions]":"name,productId,subscriptionPeriod,groupLevel,state","limit":"200"
+          }).get("data",[])
+          by_pid={x.get("attributes",{}).get("productId"):x for x in existing}
+
+          for product in PRODUCTS:
+            pid=product["productId"]
+            sub=by_pid.get(pid)
+            if not sub:
+              sub=api("POST","/v1/subscriptions",payload={
+                "data":{
+                  "type":"subscriptions",
+                  "attributes":{
+                    "name":product["name"],
+                    "productId":pid,
+                    "familySharable":False,
+                    "subscriptionPeriod":product["period"],
+                    "groupLevel":1,
+                    "reviewNote":"OX Invoice Pro unlocks unlimited estimate and invoice creation while the subscription is active."
+                  },
+                  "relationships":{"subscriptionGroup":{"data":{"type":"subscriptionGroups","id":gid}}}
+                }
+              })["data"]
+              print("SUB_CREATED="+pid+"|"+sub["id"])
+            else:
+              print("SUB_REUSED="+pid+"|"+sub["id"])
+            sid=sub["id"]
+
+            # Subscription localizations.
+            locs=api("GET",f"/v1/subscriptions/{sid}/subscriptionLocalizations",params={"limit":"200"}).get("data",[])
+            loc_locales={x.get("attributes",{}).get("locale") for x in locs}
+            for locale,(name,desc) in product["localizations"].items():
+              if locale not in loc_locales:
+                api("POST","/v1/subscriptionLocalizations",payload={
+                  "data":{
+                    "type":"subscriptionLocalizations",
+                    "attributes":{"locale":locale,"name":name,"description":desc},
+                    "relationships":{"subscription":{"data":{"type":"subscriptions","id":sid}}}
+                  }
+                })
+                print("SUB_LOCALIZATION_CREATED="+pid+"|"+locale)
+
+            # Find exact French anchor price point.
+            pps=api("GET",f"/v1/subscriptions/{sid}/pricePoints",params={
+              "filter[territory]":"FRA",
+              "fields[subscriptionPricePoints]":"customerPrice,territory",
+              "limit":"8000"
+            }).get("data",[])
+            target=decimal.Decimal(product["price"])
+            anchor=next((p for p in pps if decimal.Decimal(str(p.get("attributes",{}).get("customerPrice","-1")))==target),None)
+            if not anchor:
+              raise RuntimeError(f"No FRA price point {product['price']} EUR found for {pid}")
+            anchor_id=anchor["id"]
+            print("ANCHOR_PRICE_FOUND="+pid+"|FRA|"+product["price"])
+
+            # Equalized price points for other storefronts.
+            eq=api("GET",f"/v1/subscriptionPricePoints/{anchor_id}/equalizations",params={
+              "filter[subscription]":sid,
+              "filter[planType]":"UPFRONT",
+              "limit":"8000"
+            }).get("data",[])
+            territory_to_pp={"FRA":anchor_id}
+            for pp in eq:
+              rel=pp.get("relationships",{}).get("territory",{}).get("data")
+              if rel and rel.get("id"):
+                territory_to_pp[rel["id"]]=pp["id"]
+            if len(territory_to_pp)<50:
+              # Fallback: retry without the plan-type filter for standard subscriptions.
+              eq=api("GET",f"/v1/subscriptionPricePoints/{anchor_id}/equalizations",params={
+                "filter[subscription]":sid,
+                "limit":"8000"
+              }).get("data",[])
+              territory_to_pp={"FRA":anchor_id}
+              for pp in eq:
+                rel=pp.get("relationships",{}).get("territory",{}).get("data")
+                if rel and rel.get("id"):
+                  territory_to_pp[rel["id"]]=pp["id"]
+            print("EQUALIZED_TERRITORIES="+pid+"|"+str(len(territory_to_pp)))
+            if len(territory_to_pp)<50:
+              raise RuntimeError(f"Unexpectedly few equalized territories for {pid}")
+
+            # Plan availability: UPFRONT, all equalized storefronts.
+            plans=api("GET",f"/v1/subscriptions/{sid}/planAvailabilities",params={
+              "fields[subscriptionPlanAvailabilities]":"availableInNewTerritories,planType","limit":"200"
+            }).get("data",[])
+            upfront=next((x for x in plans if x.get("attributes",{}).get("planType")=="UPFRONT"),None)
+            territory_data=[{"type":"territories","id":t} for t in sorted(territory_to_pp)]
+            if not upfront:
+              upfront=api("POST","/v1/subscriptionPlanAvailabilities",payload={
+                "data":{
+                  "type":"subscriptionPlanAvailabilities",
+                  "attributes":{"planType":"UPFRONT","availableInNewTerritories":True},
+                  "relationships":{
+                    "subscription":{"data":{"type":"subscriptions","id":sid}},
+                    "availableTerritories":{"data":territory_data}
+                  }
+                }
+              })["data"]
+              print("PLAN_AVAILABILITY_CREATED="+pid+"|UPFRONT")
+            else:
+              # Keep the configured availability aligned with all equalized territories.
+              api("PATCH",f"/v1/subscriptionPlanAvailabilities/{upfront['id']}",payload={
+                "data":{
+                  "type":"subscriptionPlanAvailabilities",
+                  "id":upfront["id"],
+                  "attributes":{"availableInNewTerritories":True}
+                }
+              })
+              api("PATCH",f"/v1/subscriptionPlanAvailabilities/{upfront['id']}/relationships/availableTerritories",payload={
+                "data":territory_data
+              })
+              print("PLAN_AVAILABILITY_REUSED="+pid+"|UPFRONT")
+
+            # Existing current/scheduled UPFRONT prices. Build a territory map from included territory relationships.
+            price_resp=api("GET",f"/v1/subscriptions/{sid}/prices",params={
+              "filter[planType]":"UPFRONT",
+              "include":"territory,subscriptionPricePoint",
+              "fields[subscriptionPrices]":"startDate,preserved,planType,territory,subscriptionPricePoint",
+              "limit":"200"
+            })
+            existing_territories=set()
+            for pr in price_resp.get("data",[]):
+              rel=pr.get("relationships",{}).get("territory",{}).get("data")
+              if rel and rel.get("id"):
+                existing_territories.add(rel["id"])
+
+            created=0
+            for territory,ppid in territory_to_pp.items():
+              if territory in existing_territories:
+                continue
+              api("POST","/v1/subscriptionPrices",payload={
+                "data":{
+                  "type":"subscriptionPrices",
+                  "attributes":{"startDate":None,"planType":"UPFRONT"},
+                  "relationships":{
+                    "subscription":{"data":{"type":"subscriptions","id":sid}},
+                    "subscriptionPricePoint":{"data":{"type":"subscriptionPricePoints","id":ppid}}
+                  }
+                }
+              })
+              created+=1
+              if created % 40 == 0:
+                time.sleep(1)
+            print("PRICES_CREATED="+pid+"|"+str(created))
+
+          # Final verification.
+          final=api("GET",f"/v1/subscriptionGroups/{gid}/subscriptions",params={
+            "fields[subscriptions]":"name,productId,subscriptionPeriod,groupLevel,state","limit":"200"
+          }).get("data",[])
+          print("FINAL_GROUP_ID="+gid)
+          print("FINAL_SUB_COUNT="+str(len(final)))
+          for s in final:
+            a=s.get("attributes",{})
+            print("FINAL_SUB="+str(a.get("productId",""))+"|"+str(a.get("subscriptionPeriod",""))+"|level="+str(a.get("groupLevel",""))+"|state="+str(a.get("state","")))
+          PY
