@@ -21,7 +21,7 @@ add('Authoritative current entitlement restore',purchase.includes('onlyIncludeAc
 add('Native restore sync before entitlement refresh',purchase.includes('restorePurchases({ onlyIncludeActiveItemsIOS: true })'));
 add('Server verification before entitlement',purchase.includes('verifyPurchaseWithProvider') && purchase.indexOf('verifyStorePurchase(purchase)') < purchase.indexOf('onEntitlement(true)'));
 add('Finish transaction only after verified entitlement',purchase.indexOf('onEntitlement(true)') < purchase.indexOf('finishTransaction({ purchase, isConsumable: false })'));
-add('StoreKit product allow-list before verification',purchase.includes('ALL_PRODUCT_IDS.includes(purchase.productId') && purchase.indexOf('ALL_PRODUCT_IDS.includes(purchase.productId') < purchase.indexOf('verifyPurchaseWithProvider'));
+add('StoreKit product allow-list before verification',purchase.includes('ALL_PRODUCT_IDS.includes(purchase.productId') && purchase.indexOf('ALL_PRODUCT_IDS.includes(purchase.productId') < purchase.indexOf('const result = await verifyPurchaseWithProvider'));
 for(const id of ['com.operatorx.oxinvoice.pro.6months','com.operatorx.oxinvoice.pro.yearly']) add(`IAP product ${id}`,purchase.includes(id));
 const appSource=read('App.tsx');
 add('Business setup gate before first document',appSource.includes('business.name.trim()') && appSource.includes("type: 'business'"));
