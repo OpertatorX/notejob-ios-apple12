@@ -1,5 +1,5 @@
 name: OX Invoice ASC Subscriptions Read
-# diagnostic refresh 2026-09-29 10:38
+# diagnostic refresh 2026-09-29 10:53
 on:
   push:
     paths:
