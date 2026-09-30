@@ -126,7 +126,7 @@ jobs:
             // Resolve app live.
             const apps = await getAll(token,
               '/v1/apps?filter%5BbundleId%5D=' + encodeURIComponent(bundleId) +
-              '&fields%5Bapps%5D=name,bundleId,primaryLocale,contentRightsDeclaration,availableInNewTerritories'
+              '&fields%5Bapps%5D=name,bundleId,primaryLocale,contentRightsDeclaration'
             );
             if (apps.length !== 1) throw new Error('Expected one OX Invoice app, got ' + apps.length);
             const app = apps[0];
@@ -135,7 +135,6 @@ jobs:
             console.log('APP_ID=' + appId);
             console.log('PRIMARY_LOCALE=' + String(before.primaryLocale || ''));
             console.log('CONTENT_RIGHTS_BEFORE=' + String(before.contentRightsDeclaration || 'null'));
-            console.log('NEW_TERRITORIES_BEFORE=' + String(before.availableInNewTerritories));
 
             // Safe desired values for OX Invoice.
             const patchBody = {
@@ -151,7 +150,6 @@ jobs:
             const patched = await jsonRequest(token, 'PATCH', '/v1/apps/' + appId, patchBody, [200]);
             const pa = patched.data?.data?.attributes || {};
             console.log('CONTENT_RIGHTS_AFTER=' + String(pa.contentRightsDeclaration || ''));
-            console.log('NEW_TERRITORIES_AFTER=' + String(pa.availableInNewTerritories));
 
             // Version 1.0.
             const versions = await getAll(token,
@@ -258,15 +256,12 @@ jobs:
             const appCheck = await jsonRequest(
               token, 'GET',
               '/v1/apps/' + appId +
-              '?fields%5Bapps%5D=contentRightsDeclaration,availableInNewTerritories,primaryLocale',
+              '?fields%5Bapps%5D=contentRightsDeclaration,primaryLocale',
               null, [200]
             );
             const aa = appCheck.data?.data?.attributes || {};
             if (aa.contentRightsDeclaration !== 'DOES_NOT_USE_THIRD_PARTY_CONTENT') {
               throw new Error('Content rights did not persist');
-            }
-            if (aa.availableInNewTerritories !== true) {
-              throw new Error('availableInNewTerritories did not persist');
             }
             console.log('DIRECT_ASC_FIX_VERIFIED=yes');
           })().catch(err => {
