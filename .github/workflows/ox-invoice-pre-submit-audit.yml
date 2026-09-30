@@ -136,7 +136,11 @@ jobs:
             const gv=await optional(tok,'/v1/subscriptionGroups/'+group.id+'/versions?fields%5BsubscriptionGroupVersions%5D=version,state&limit=50');
             if(gv){
               console.log('SUB_GROUP_VERSION_COUNT='+gv.length);
-              for(const x of gv) console.log('SUB_GROUP_VERSION='+x.id+'|'+JSON.stringify(x.attributes||{}));
+              for(const x of gv) {
+                console.log('SUB_GROUP_VERSION='+x.id+'|'+JSON.stringify(x.attributes||{}));
+                const gl=await all(tok,'/v1/subscriptionGroupVersions/'+x.id+'/localizations?fields%5BsubscriptionGroupLocalizations%5D=locale,name,customAppName&limit=50');
+                console.log('SUB_GROUP_VERSION_LOCALES='+gl.map(y=>y.attributes?.locale).filter(Boolean).sort().join(','));
+              }
             }
 
             for(const s of subs){
@@ -147,7 +151,13 @@ jobs:
               const sv=await optional(tok,'/v1/subscriptions/'+s.id+'/versions?fields%5BsubscriptionVersions%5D=version,state&limit=50');
               if(sv){
                 console.log('SUB_VERSION_COUNT|'+sa.productId+'='+sv.length);
-                for(const x of sv) console.log('SUB_VERSION|'+sa.productId+'|'+x.id+'|'+JSON.stringify(x.attributes||{}));
+                for(const x of sv) {
+                  console.log('SUB_VERSION|'+sa.productId+'|'+x.id+'|'+JSON.stringify(x.attributes||{}));
+                  const sl=await all(tok,'/v1/subscriptionVersions/'+x.id+'/localizations?fields%5BsubscriptionLocalizations%5D=locale,name,description&limit=50');
+                  console.log('SUB_VERSION_LOCALES|'+sa.productId+'='+sl.map(y=>y.attributes?.locale).filter(Boolean).sort().join(','));
+                  const si=await all(tok,'/v1/subscriptionVersions/'+x.id+'/images?fields%5BsubscriptionImages%5D=fileName,assetDeliveryState&limit=50');
+                  console.log('SUB_VERSION_IMAGES|'+sa.productId+'='+si.length);
+                }
               }
 
               const plans=await all(tok,'/v1/subscriptions/'+s.id+'/planAvailabilities?fields%5BsubscriptionPlanAvailabilities%5D=availableInNewTerritories,planType&limit=50');
