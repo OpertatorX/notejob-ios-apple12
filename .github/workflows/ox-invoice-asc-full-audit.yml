@@ -1,0 +1,188 @@
+name: OX Invoice ASC Full Audit
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/ox-invoice-asc-full-audit.yml
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      ASC_KEY_IDENTIFIER: 86PUKZ4ZVC
+      ASC_APP_ID: "6817043240"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ox-invoice-release
+      - name: Install Python deps
+        run: python3 -m pip install --quiet pyjwt cryptography requests
+      - name: Audit live App Store Connect record
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,time,json,requests,jwt
+
+          expo_token=os.environ["EXPO_TOKEN"]
+          kid=os.environ["ASC_KEY_IDENTIFIER"]
+          app_id=os.environ["ASC_APP_ID"]
+
+          gql="https://api.expo.dev/graphql"
+          eh={"authorization":f"Bearer {expo_token}","content-type":"application/json"}
+          q1=r"""query Keys($accountName:String!){account{byName(accountName:$accountName){appStoreConnectApiKeysPaginated(first:100){edges{node{id issuerIdentifier keyIdentifier name roles}}}}}}"""
+          rr=requests.post(gql,headers=eh,json={"query":q1,"variables":{"accountName":"operatorx"}},timeout=30); rr.raise_for_status()
+          nodes=[e["node"] for e in rr.json()["data"]["account"]["byName"]["appStoreConnectApiKeysPaginated"]["edges"]]
+          meta=next((x for x in nodes if x.get("keyIdentifier")==kid),None)
+          if not meta: raise RuntimeError("ASC key not found in EAS")
+          q2=r"""query Key($id:ID!){appStoreConnectApiKey{byId(id:$id){id issuerIdentifier keyIdentifier keyP8}}}"""
+          rr=requests.post(gql,headers=eh,json={"query":q2,"variables":{"id":meta["id"]}},timeout=30); rr.raise_for_status()
+          key=rr.json()["data"]["appStoreConnectApiKey"]["byId"]
+          now=int(time.time())
+          tok=jwt.encode({"iat":now,"exp":now+900,"aud":"appstoreconnect-v1","iss":key["issuerIdentifier"]},key["keyP8"],algorithm="ES256",headers={"kid":kid,"typ":"JWT"})
+          H={"Authorization":f"Bearer {tok}"}
+          BASE="https://api.appstoreconnect.apple.com"
+
+          def req(path,params=None,required=True):
+            r=requests.get(BASE+path,headers=H,params=params,timeout=45)
+            if r.status_code!=200:
+              try:
+                errs=r.json().get("errors",[])
+                detail=" | ".join(f"{e.get('code','')}:{e.get('title','')}:{e.get('detail','')}" for e in errs[:3])
+              except Exception: detail=r.text[:500]
+              if required: raise RuntimeError(f"GET {path} HTTP {r.status_code}: {detail}")
+              print(f"OPTIONAL_ENDPOINT_FAIL|{path}|HTTP={r.status_code}|{detail}")
+              return None
+            return r.json()
+
+          def data_list(x):
+            if not x: return []
+            d=x.get("data",[])
+            return d if isinstance(d,list) else ([d] if d else [])
+
+          def attr(d): return (d or {}).get("attributes",{}) or {}
+          def rel_id(d,name):
+            try: return d["relationships"][name]["data"]["id"]
+            except Exception: return None
+
+          print("=== APP ===")
+          app=req(f"/v1/apps/{app_id}",{"fields[apps]":"name,bundleId,sku,primaryLocale,isOrEverWasMadeForKids,contentRightsDeclaration,streamlinedPurchasingEnabled"})
+          aa=attr(app["data"])
+          for k in ["name","bundleId","sku","primaryLocale","isOrEverWasMadeForKids","contentRightsDeclaration","streamlinedPurchasingEnabled"]:
+            print(f"APP_{k}={aa.get(k)}")
+
+          print("=== APP INFO / LOCALIZATIONS / CATEGORIES / AGE ===")
+          infos=req(f"/v1/apps/{app_id}/appInfos",{"fields[appInfos]":"appStoreState,state,appStoreAgeRating,australiaAgeRating,brazilAgeRating,brazilAgeRatingV2,franceAgeRating,koreaAgeRating,kidsAgeBand","limit":"50"})
+          info_rows=data_list(infos)
+          print("APP_INFO_COUNT="+str(len(info_rows)))
+          for info in info_rows:
+            ia=attr(info); iid=info["id"]
+            print("APP_INFO="+iid+"|state="+str(ia.get("state"))+"|appStoreState="+str(ia.get("appStoreState"))+"|rating="+str(ia.get("appStoreAgeRating"))+"|fr="+str(ia.get("franceAgeRating")))
+            locs=req(f"/v1/appInfos/{iid}/appInfoLocalizations",{"fields[appInfoLocalizations]":"locale,name,subtitle,privacyPolicyUrl,privacyPolicyText","limit":"50"})
+            for loc in data_list(locs):
+              a=attr(loc)
+              print("APP_INFO_LOC="+str(a.get("locale"))+"|name="+json.dumps(a.get("name"),ensure_ascii=False)+"|subtitle="+json.dumps(a.get("subtitle"),ensure_ascii=False)+"|privacy="+str(a.get("privacyPolicyUrl")))
+            for rel in ["primaryCategory","secondaryCategory"]:
+              cat=req(f"/v1/appInfos/{iid}/{rel}",required=False)
+              if cat and cat.get("data"):
+                print(rel.upper()+"="+str(cat["data"].get("id"))+"|"+str(attr(cat["data"]).get("platforms")))
+              else:
+                print(rel.upper()+"=MISSING")
+            age=req(f"/v1/appInfos/{iid}/ageRatingDeclaration",{"fields[ageRatingDeclarations]":"advertising,alcoholTobaccoOrDrugUseOrReferences,contests,gambling,gamblingSimulated,gunsOrOtherWeapons,healthOrWellnessTopics,kidsAgeBand,lootBox,medicalOrTreatmentInformation,messagingAndChat,parentalControls,profanityOrCrudeHumor,ageAssurance,sexualContentGraphicAndNudity,sexualContentOrNudity,socialMedia,socialMediaAgeRestricted,horrorOrFearThemes,matureOrSuggestiveThemes,unrestrictedWebAccess,userGeneratedContent,violenceCartoonOrFantasy,violenceRealisticProlongedGraphicOrSadistic,violenceRealistic,ageRatingOverride,ageRatingOverrideV2,koreaAgeRatingOverride,developerAgeRatingInfoUrl"})
+            print("AGE_RATING="+json.dumps(attr(age["data"]),sort_keys=True,ensure_ascii=False))
+
+          print("=== APP STORE VERSION ===")
+          vers=req(f"/v1/apps/{app_id}/appStoreVersions",{"filter[platform]":"IOS","fields[appStoreVersions]":"platform,versionString,appStoreState,appVersionState,copyright,reviewType,releaseType,earliestReleaseDate,usesIdfa,downloadable,createdDate","limit":"50"})
+          versions=data_list(vers)
+          print("VERSION_COUNT="+str(len(versions)))
+          target=None
+          for v in versions:
+            va=attr(v)
+            print("VERSION="+v["id"]+"|"+str(va.get("versionString"))+"|state="+str(va.get("appVersionState") or va.get("appStoreState"))+"|copyright="+str(va.get("copyright"))+"|releaseType="+str(va.get("releaseType"))+"|usesIdfa="+str(va.get("usesIdfa")))
+            if va.get("versionString")=="1.0": target=v
+          if not target: raise RuntimeError("iOS version 1.0 not found")
+          vid=target["id"]
+
+          vlocs=req(f"/v1/appStoreVersions/{vid}/appStoreVersionLocalizations",{"fields[appStoreVersionLocalizations]":"description,locale,keywords,marketingUrl,promotionalText,supportUrl,whatsNew","limit":"200"})
+          for loc in data_list(vlocs):
+            la=attr(loc); lid=loc["id"]
+            print("VERSION_LOC="+str(la.get("locale"))+"|desc_len="+str(len(la.get("description") or ""))+"|keywords_len="+str(len(la.get("keywords") or ""))+"|promo_len="+str(len(la.get("promotionalText") or ""))+"|support="+str(la.get("supportUrl"))+"|marketing="+str(la.get("marketingUrl")))
+            sets=req(f"/v1/appStoreVersionLocalizations/{lid}/appScreenshotSets",{"fields[appScreenshotSets]":"screenshotDisplayType","limit":"50"})
+            ss=data_list(sets)
+            print("SCREENSHOT_SET_COUNT|"+str(la.get("locale"))+"="+str(len(ss)))
+            for s in ss:
+              sa=attr(s); sid=s["id"]
+              shots=req(f"/v1/appScreenshotSets/{sid}/appScreenshots",{"limit":"50"})
+              print("SCREENSHOT_SET="+str(la.get("locale"))+"|"+str(sa.get("screenshotDisplayType"))+"|count="+str(len(data_list(shots))))
+
+          build=req(f"/v1/appStoreVersions/{vid}/build",{"fields[builds]":"version,uploadedDate,expirationDate,expired,minOsVersion,processingState,buildAudienceType,usesNonExemptEncryption"},required=False)
+          if build and build.get("data"):
+            ba=attr(build["data"])
+            print("SELECTED_BUILD="+build["data"]["id"]+"|version="+str(ba.get("version"))+"|processing="+str(ba.get("processingState"))+"|expired="+str(ba.get("expired"))+"|encryption="+str(ba.get("usesNonExemptEncryption"))+"|minOS="+str(ba.get("minOsVersion")))
+          else:
+            print("SELECTED_BUILD=MISSING")
+
+          allbuilds=req(f"/v1/apps/{app_id}/builds",{"filter[version]":"4","fields[builds]":"version,uploadedDate,expirationDate,expired,minOsVersion,processingState,buildAudienceType,usesNonExemptEncryption","limit":"50"},required=False)
+          print("BUILD4_MATCH_COUNT="+str(len(data_list(allbuilds))))
+          for b in data_list(allbuilds):
+            print("BUILD4="+b["id"]+"|"+json.dumps(attr(b),sort_keys=True))
+
+          review=req(f"/v1/appStoreVersions/{vid}/appStoreReviewDetail",{"fields[appStoreReviewDetails]":"contactFirstName,contactLastName,contactPhone,contactEmail,demoAccountName,demoAccountPassword,demoAccountRequired,notes"},required=False)
+          if review and review.get("data"):
+            ra=attr(review["data"])
+            safe={k:ra.get(k) for k in ["contactFirstName","contactLastName","contactPhone","contactEmail","demoAccountRequired","notes"]}
+            safe["notes_len"]=len(ra.get("notes") or "")
+            print("REVIEW_DETAIL="+json.dumps(safe,ensure_ascii=False))
+          else:
+            print("REVIEW_DETAIL=MISSING")
+
+          print("=== AVAILABILITY ===")
+          av=req(f"/v1/apps/{app_id}/appAvailabilityV2",{"fields[appAvailabilities]":"availableInNewTerritories","include":"territoryAvailabilities","fields[territoryAvailabilities]":"available,releaseDate,preOrderEnabled,preOrderPublishDate,contentStatuses,territory","limit[territoryAvailabilities]":"50"},required=False)
+          if av and av.get("data"):
+            print("AVAILABLE_IN_NEW_TERRITORIES="+str(attr(av["data"]).get("availableInNewTerritories")))
+            inc=av.get("included",[])
+            print("TERRITORY_ROWS_INCLUDED="+str(len(inc)))
+            print("TERRITORY_AVAILABLE_INCLUDED="+str(sum(1 for x in inc if attr(x).get("available") is True)))
+          else: print("AVAILABILITY=UNREADABLE")
+
+          print("=== APP PRICE ===")
+          ps=req(f"/v1/apps/{app_id}/appPriceSchedule",required=False)
+          if ps and ps.get("data"): print("PRICE_SCHEDULE_ID="+str(ps["data"].get("id")))
+          else: print("PRICE_SCHEDULE=MISSING_OR_UNREADABLE")
+
+          print("=== SUBSCRIPTIONS ===")
+          groups=req(f"/v1/apps/{app_id}/subscriptionGroups",{"fields[subscriptionGroups]":"referenceName","limit":"200"})
+          for g in data_list(groups):
+            gid=g["id"]; print("SUB_GROUP="+gid+"|"+str(attr(g).get("referenceName")))
+            glocs=req(f"/v1/subscriptionGroups/{gid}/subscriptionGroupLocalizations",{"limit":"200"})
+            print("SUB_GROUP_LOCALES="+",".join(sorted(str(attr(x).get("locale")) for x in data_list(glocs))))
+            subs=req(f"/v1/subscriptionGroups/{gid}/subscriptions",{"fields[subscriptions]":"name,productId,subscriptionPeriod,groupLevel,state,reviewNote,familySharable","limit":"200"})
+            for s in data_list(subs):
+              sid=s["id"]; sa=attr(s)
+              print("SUB="+sid+"|"+str(sa.get("productId"))+"|period="+str(sa.get("subscriptionPeriod"))+"|level="+str(sa.get("groupLevel"))+"|state="+str(sa.get("state"))+"|review_note="+str(bool((sa.get("reviewNote") or "").strip())))
+              locs=req(f"/v1/subscriptions/{sid}/subscriptionLocalizations",{"limit":"200"})
+              print("SUB_LOCALES|"+str(sa.get("productId"))+"="+",".join(sorted(str(attr(x).get("locale")) for x in data_list(locs))))
+              shot=req(f"/v1/subscriptions/{sid}/relationships/appStoreReviewScreenshot",required=False)
+              print("SUB_REVIEW_SCREENSHOT|"+str(sa.get("productId"))+"="+("PRESENT" if shot and shot.get("data") else "MISSING"))
+              prices=req(f"/v1/subscriptions/{sid}/prices",{"filter[planType]":"UPFRONT","limit":"200"},required=False)
+              print("SUB_PRICE_ROWS|"+str(sa.get("productId"))+"="+str(len(data_list(prices))))
+
+          print("=== REVIEW SUBMISSIONS ===")
+          subsms=req(f"/v1/apps/{app_id}/reviewSubmissions",{"fields[reviewSubmissions]":"platform,submittedDate,state","limit":"50"},required=False)
+          if subsms:
+            rows=data_list(subsms)
+            print("REVIEW_SUBMISSION_COUNT="+str(len(rows)))
+            for rs in rows:
+              rsa=attr(rs); rid=rs["id"]
+              print("REVIEW_SUBMISSION="+rid+"|state="+str(rsa.get("state"))+"|platform="+str(rsa.get("platform"))+"|submitted="+str(rsa.get("submittedDate")))
+              items=req(f"/v1/reviewSubmissions/{rid}/items",{"fields[reviewSubmissionItems]":"state","limit":"200"},required=False)
+              if items:
+                print("REVIEW_ITEMS="+json.dumps([{"id":x["id"],"state":attr(x).get("state"),"relationships":list((x.get("relationships") or {}).keys())} for x in data_list(items)]))
+          else:
+            print("REVIEW_SUBMISSIONS=UNREADABLE")
+
+          print("=== END AUDIT ===")
+          PY
