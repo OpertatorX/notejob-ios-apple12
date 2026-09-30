@@ -1,0 +1,194 @@
+name: OX Invoice — upload App Store screenshots
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ox-invoice-upload-screenshots.yml"
+      - "screenshots-b64/**"
+
+permissions:
+  contents: read
+
+jobs:
+  upload-screenshots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      OX_EAS_PROJECT_ID: "a8ec463b-a530-41c9-af1f-c5499359f881"
+      OX_PROJECT_SLUG: "ox-invoice"
+      OX_BUNDLE_ID: "com.operatorx.oxinvoice"
+      OX_VERSION: "1.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Rebuild screenshot files from base64 chunks
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p screenshots/fr-FR screenshots/en-US
+          for locale in fr-FR en-US; do
+            short="fr"; [ "$locale" = "en-US" ] && short="en"
+            for n in 1 2 3 4 5; do
+              cat screenshots-b64/$short/${short}_${n}.part* | tr -d '\n\r ' | base64 -d > "screenshots/$locale/${n}.jpg"
+            done
+          done
+          python3 - <<'PY'
+          from PIL import Image
+          from pathlib import Path
+          for p in sorted(Path("screenshots").rglob("*.jpg")):
+              im=Image.open(p)
+              if im.size != (1242,2688):
+                  raise SystemExit(f"BAD_SIZE {p} {im.size}")
+              print("SCREEN_OK",p,im.size,p.stat().st_size)
+          PY
+
+      - name: Install EAS CLI library
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${EXPO_TOKEN:-}" || { echo "EXPO_TOKEN missing"; exit 20; }
+          mkdir -p /tmp/easlib
+          npm install --prefix /tmp/easlib eas-cli@latest --ignore-scripts --no-audit --no-fund >/dev/null
+
+      - name: Upload screenshots to App Store Connect
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/upload-screens.cjs <<'NODE'
+          const fs=require('fs');
+          const path=require('path');
+          const crypto=require('crypto');
+          const ROOT='/tmp/easlib/node_modules/eas-cli/build';
+          const {createGraphqlClient}=require(ROOT+'/commandUtils/context/contextUtils/createGraphqlClient.js');
+          const {getOwnerAccountForProjectIdAsync}=require(ROOT+'/project/projectUtils.js');
+          const {getAscApiKeyForAppSubmissionsAsync}=require(ROOT+'/credentials/ios/api/GraphqlClient.js');
+          const {AppStoreConnectApiKeyQuery}=require(ROOT+'/graphql/queries/AppStoreConnectApiKeyQuery.js');
+
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          const b64url=x=>Buffer.from(x).toString('base64url');
+          function appleJwt(k){
+            const now=Math.floor(Date.now()/1000);
+            const h={alg:'ES256',kid:k.keyIdentifier,typ:'JWT'};
+            const p={iss:k.issuerIdentifier,iat:now-5,exp:now+900,aud:'appstoreconnect-v1'};
+            const s=b64url(JSON.stringify(h))+'.'+b64url(JSON.stringify(p));
+            const sig=crypto.sign('sha256',Buffer.from(s),{key:k.keyP8,dsaEncoding:'ieee-p1363'});
+            return s+'.'+sig.toString('base64url');
+          }
+          async function req(tok,method,url,body=null,ok=[200]){
+            const full=url.startsWith('http')?url:'https://api.appstoreconnect.apple.com'+url;
+            for(let attempt=1;attempt<=5;attempt++){
+              const r=await fetch(full,{
+                method,
+                headers:url.startsWith('http')?undefined:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},
+                body:body?(Buffer.isBuffer(body)?body:JSON.stringify(body)):undefined
+              });
+              const txt=await r.text(); let j=null; try{j=txt?JSON.parse(txt):null}catch{j=txt}
+              if(ok.includes(r.status)) return {status:r.status,data:j,headers:r.headers};
+              if(r.status>=500 && attempt<5){await sleep(attempt*1200);continue}
+              throw new Error(method+' '+url+' -> '+r.status+' '+(typeof j==='string'?j.slice(0,500):JSON.stringify(j)));
+            }
+          }
+          async function all(tok,url){
+            let next=url,out=[];
+            while(next){
+              const r=await req(tok,'GET',next,null,[200]);
+              out.push(...(r.data?.data||[]));
+              next=r.data?.links?.next||null;
+            }
+            return out;
+          }
+          async function uploadAsset(tok,shot,bytes){
+            const ops=shot.attributes?.uploadOperations||[];
+            if(!ops.length) throw new Error('No uploadOperations for '+shot.id);
+            for(const op of ops){
+              const off=Number(op.offset||0), len=Number(op.length||0);
+              const chunk=bytes.subarray(off,off+len);
+              const headers={};
+              for(const h of op.requestHeaders||[]) headers[h.name]=h.value;
+              const r=await fetch(op.url,{method:op.method||'PUT',headers,body:chunk});
+              if(!r.ok) throw new Error('Asset PUT failed '+r.status+' '+await r.text());
+            }
+            await req(tok,'PATCH','/v1/appScreenshots/'+shot.id,{
+              data:{type:'appScreenshots',id:shot.id,attributes:{uploaded:true}}
+            },[200]);
+          }
+
+          (async()=>{
+            const gql=createGraphqlClient({accessToken:process.env.EXPO_TOKEN,sessionSecret:null});
+            const account=await getOwnerAccountForProjectIdAsync(gql,process.env.OX_EAS_PROJECT_ID);
+            const frag=await getAscApiKeyForAppSubmissionsAsync(gql,{
+              account,projectName:process.env.OX_PROJECT_SLUG,bundleIdentifier:process.env.OX_BUNDLE_ID
+            });
+            if(!frag) throw new Error('ASC key not found');
+            const key=await AppStoreConnectApiKeyQuery.getByIdAsync(gql,frag.id);
+            const tok=appleJwt(key);
+
+            const apps=await all(tok,'/v1/apps?filter%5BbundleId%5D='+encodeURIComponent(process.env.OX_BUNDLE_ID)+'&fields%5Bapps%5D=name,bundleId');
+            if(apps.length!==1) throw new Error('OX Invoice app lookup failed');
+            const appId=apps[0].id;
+
+            const versions=await all(tok,'/v1/apps/'+appId+'/appStoreVersions?filter%5Bplatform%5D=IOS&filter%5BversionString%5D='+encodeURIComponent(process.env.OX_VERSION)+'&fields%5BappStoreVersions%5D=versionString,appVersionState');
+            if(!versions.length) throw new Error('Version 1.0 missing');
+            const versionId=versions[0].id;
+
+            const locs=await all(tok,'/v1/appStoreVersions/'+versionId+'/appStoreVersionLocalizations?fields%5BappStoreVersionLocalizations%5D=locale');
+            for(const locale of ['fr-FR','en-US']){
+              const loc=locs.find(x=>x.attributes?.locale===locale);
+              if(!loc) throw new Error('Missing locale '+locale);
+
+              let sets=await all(tok,'/v1/appStoreVersionLocalizations/'+loc.id+'/appScreenshotSets?fields%5BappScreenshotSets%5D=screenshotDisplayType');
+              let set=sets.find(x=>x.attributes?.screenshotDisplayType==='APP_IPHONE_65');
+              if(!set){
+                const made=await req(tok,'POST','/v1/appScreenshotSets',{
+                  data:{
+                    type:'appScreenshotSets',
+                    attributes:{screenshotDisplayType:'APP_IPHONE_65'},
+                    relationships:{appStoreVersionLocalization:{data:{type:'appStoreVersionLocalizations',id:loc.id}}}
+                  }
+                },[201]);
+                set=made.data.data;
+                console.log('SET_CREATED '+locale+' '+set.id);
+              }
+
+              const old=await all(tok,'/v1/appScreenshotSets/'+set.id+'/appScreenshots?fields%5BappScreenshots%5D=fileName,assetDeliveryState');
+              for(const s of old){
+                await req(tok,'DELETE','/v1/appScreenshots/'+s.id,null,[204]);
+                console.log('DELETED '+locale+' '+s.id);
+              }
+
+              const dir=path.join('screenshots',locale);
+              for(let i=1;i<=5;i++){
+                const file=path.join(dir,i+'.jpg');
+                const bytes=fs.readFileSync(file);
+                const name='OX-Invoice-'+locale+'-'+String(i).padStart(2,'0')+'.jpg';
+                const made=await req(tok,'POST','/v1/appScreenshots',{
+                  data:{
+                    type:'appScreenshots',
+                    attributes:{fileName:name,fileSize:bytes.length},
+                    relationships:{appScreenshotSet:{data:{type:'appScreenshotSets',id:set.id}}}
+                  }
+                },[201]);
+                const shot=made.data.data;
+                await uploadAsset(tok,shot,bytes);
+                console.log('UPLOADED '+locale+' '+i+' '+shot.id);
+              }
+
+              for(let wait=0;wait<30;wait++){
+                const live=await all(tok,'/v1/appScreenshotSets/'+set.id+'/appScreenshots?fields%5BappScreenshots%5D=fileName,assetDeliveryState');
+                const states=live.map(s=>s.attributes?.assetDeliveryState?.state||s.attributes?.assetDeliveryState||'UNKNOWN');
+                console.log('VERIFY '+locale+' count='+live.length+' states='+states.join(','));
+                if(live.length===5 && states.every(s=>['COMPLETE','COMPLETED'].includes(String(s).toUpperCase()))) break;
+                if(wait===29) throw new Error('Screenshot processing timeout '+locale);
+                await sleep(3000);
+              }
+            }
+            console.log('SCREENSHOT_UPLOAD=PASS');
+          })().catch(e=>{console.error('SCREENSHOT_UPLOAD=FAIL');console.error(e.stack||e.message);process.exit(1)});
+          NODE
+          node /tmp/upload-screens.cjs
