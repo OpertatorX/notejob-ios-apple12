@@ -1,0 +1,151 @@
+name: OX Invoice — App Store metadata fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ox-invoice-asc-metadata-fix.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  metadata-fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - name: Checkout credential-host / NoteJob
+        uses: actions/checkout@v4
+        with:
+          path: notejob
+
+      - name: Checkout OX Invoice release source
+        uses: actions/checkout@v4
+        with:
+          ref: ox-invoice-release
+          path: ox
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Verify Expo access
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${EXPO_TOKEN:-}" || { echo "EXPO_TOKEN missing"; exit 20; }
+          npx --yes eas-cli@latest whoami
+
+      - name: Install NoteJob project dependencies
+        working-directory: notejob
+        shell: bash
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Pull existing Apple review contact without exposing it
+        working-directory: notejob
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f store.config.json
+          npx --yes eas-cli@latest metadata:pull --profile production --non-interactive >/tmp/notejob-metadata-pull.log 2>&1 || {
+            sed -E 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+/[REDACTED_EMAIL]/g' /tmp/notejob-metadata-pull.log
+            exit 21
+          }
+          node - <<'NODE'
+          const fs = require('fs');
+          const cfg = JSON.parse(fs.readFileSync('store.config.json', 'utf8'));
+          const r = cfg?.apple?.review || {};
+          const required = ['firstName','lastName','email','phone'];
+          const missing = required.filter(k => !String(r[k] || '').trim());
+          if (missing.length) {
+            console.error('Existing Apple review contact is incomplete; missing:', missing.join(', '));
+            process.exit(22);
+          }
+          const contact = Object.fromEntries(required.map(k => [k, String(r[k]).trim()]));
+          fs.writeFileSync(process.env.RUNNER_TEMP + '/ox-review-contact.json', JSON.stringify(contact));
+          console.log('Existing Apple review contact recovered: complete=yes');
+          NODE
+
+      - name: Install OX Invoice project dependencies
+        working-directory: ox
+        shell: bash
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Inject OX Invoice review information
+        working-directory: ox
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs = require('fs');
+          const p = 'store.config.json';
+          const cfg = JSON.parse(fs.readFileSync(p, 'utf8'));
+          const contact = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/ox-review-contact.json', 'utf8'));
+          const notes = [
+            'OX Invoice is a local-first estimate and invoice maker for freelancers, independent contractors, and small businesses.',
+            '',
+            'No account or login is required.',
+            '',
+            'Review path:',
+            '1. Launch the app; a new install starts empty.',
+            '2. Home > New Estimate or New Invoice.',
+            '3. Add a client and line item, save, then open Preview.',
+            '4. Share PDF uses the native iOS share sheet.',
+            '5. Up to 3 documents can be created for free. The fourth creation attempt opens OX Invoice Pro.',
+            '6. More > Restore Purchases is available at any time.',
+            '',
+            'Auto-renewable subscriptions:',
+            '- com.operatorx.oxinvoice.pro.6months',
+            '- com.operatorx.oxinvoice.pro.yearly',
+            '',
+            'The app contains no ads, no tracking, and no analytics SDK. Business, client, and document data is stored locally on the device. Network access is used for Apple in-app purchases and entitlement verification via IAPKit. There is no external payment flow.'
+          ].join('\n');
+          cfg.apple = cfg.apple || {};
+          cfg.apple.version = '1.0';
+          cfg.apple.review = {
+            ...contact,
+            demoRequired: false,
+            notes
+          };
+          fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + '\n');
+          console.log('OX review metadata prepared: contact=complete demoRequired=false notes=present');
+          NODE
+
+      - name: Lint OX Invoice metadata
+        working-directory: ox
+        shell: bash
+        run: npx --yes eas-cli@latest metadata:lint --profile production
+
+      - name: Push OX Invoice metadata to App Store Connect
+        working-directory: ox
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes eas-cli@latest metadata:push --profile production --non-interactive
+
+      - name: Verify live metadata by pulling it back
+        working-directory: ox
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f store.config.json
+          npx --yes eas-cli@latest metadata:pull --profile production --non-interactive >/tmp/ox-metadata-verify.log 2>&1 || {
+            sed -E 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+/[REDACTED_EMAIL]/g' /tmp/ox-metadata-verify.log
+            exit 23
+          }
+          node - <<'NODE'
+          const fs = require('fs');
+          const cfg = JSON.parse(fs.readFileSync('store.config.json', 'utf8'));
+          const r = cfg?.apple?.review || {};
+          const contactComplete = ['firstName','lastName','email','phone'].every(k => String(r[k] || '').trim());
+          const locales = Object.keys(cfg?.apple?.info || {}).sort();
+          console.log('VERIFY_REVIEW_CONTACT_COMPLETE=' + (contactComplete ? 'yes' : 'no'));
+          console.log('VERIFY_DEMO_REQUIRED=' + String(r.demoRequired));
+          console.log('VERIFY_REVIEW_NOTES_PRESENT=' + (String(r.notes || '').trim() ? 'yes' : 'no'));
+          console.log('VERIFY_LOCALES=' + locales.join(','));
+          console.log('VERIFY_VERSION=' + String(cfg?.apple?.version || ''));
+          if (!contactComplete || r.demoRequired !== false || !String(r.notes || '').trim()) process.exit(24);
+          if (!locales.includes('en-US') || !locales.includes('fr-FR')) process.exit(25);
+          NODE
