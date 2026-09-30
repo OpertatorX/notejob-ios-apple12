@@ -9,7 +9,7 @@ on:
 jobs:
   visual-qa:
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -31,7 +31,7 @@ jobs:
         working-directory: jobprofit-native
         run: xcodegen generate
 
-      - name: Select simulator
+      - name: Select and boot simulator
         id: sim
         shell: bash
         run: |
@@ -57,7 +57,18 @@ jobs:
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
           echo "Using simulator $UDID"
           xcrun simctl boot "$UDID" || true
-          xcrun simctl bootstatus "$UDID" -b
+          BOOTED=0
+          for i in $(seq 1 60); do
+            STATE=$(xcrun simctl list devices -j | python3 -c 'import json,sys; d=json.load(sys.stdin); u=sys.argv[1]; print(next((x.get("state","") for xs in d["devices"].values() for x in xs if x.get("udid")==u),""))' "$UDID")
+            echo "Simulator state: $STATE"
+            if [ "$STATE" = "Booted" ]; then BOOTED=1; break; fi
+            sleep 2
+          done
+          if [ "$BOOTED" != "1" ]; then
+            echo "Simulator failed to boot within 120 seconds"
+            xcrun simctl list devices
+            exit 31
+          fi
 
       - name: Build native app
         working-directory: jobprofit-native
