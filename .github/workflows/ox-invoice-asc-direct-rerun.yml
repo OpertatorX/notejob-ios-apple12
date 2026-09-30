@@ -1,0 +1,62 @@
+name: OX Invoice — ASC direct rerun
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ox-invoice-asc-direct-rerun.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  rerun-fixed-direct-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      OX_EAS_PROJECT_ID: "a8ec463b-a530-41c9-af1f-c5499359f881"
+      OX_PROJECT_SLUG: "ox-invoice"
+      OX_BUNDLE_ID: "com.operatorx.oxinvoice"
+      OX_VERSION: "1.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install EAS CLI library
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${EXPO_TOKEN:-}" || { echo "EXPO_TOKEN missing"; exit 20; }
+          mkdir -p /tmp/easlib
+          npm install --prefix /tmp/easlib eas-cli@latest --ignore-scripts --no-audit --no-fund >/dev/null
+
+      - name: Extract fixed one-off ASC script
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re, textwrap
+
+          src = Path(".github/workflows/ox-invoice-asc-direct-final.yml").read_text()
+          marker = "cat > /tmp/asc-direct-fix.cjs <<'NODE'"
+          a = src.index(marker) + len(marker)
+          b = src.index("\n          NODE", a)
+          script = textwrap.dedent(src[a:b]).lstrip("\n")
+
+          pattern = r"(contentRightsDeclaration: 'DOES_NOT_USE_THIRD_PARTY_CONTENT'),\s*\n\s*availableInNewTerritories: true"
+          script, n = re.subn(pattern, r"\1", script, count=1)
+          if n != 1:
+              raise SystemExit(f"availability patch removal expected 1 match, got {n}")
+
+          Path("/tmp/asc-direct-fix.cjs").write_text(script)
+          print("TEMP_ASC_SCRIPT_PATCHED=yes")
+          PY
+
+      - name: Set content rights and audit live ASC
+        shell: bash
+        run: node /tmp/asc-direct-fix.cjs
