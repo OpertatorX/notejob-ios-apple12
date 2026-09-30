@@ -167,7 +167,7 @@ private struct JobOverviewTab: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(store.money(job.profit))
                         .font(.system(size: 36, weight: .bold, design: .rounded))
-                        .foregroundStyle(.jpGreen)
+                        .foregroundStyle(Color.jpGreen)
                     Text("Actual Profit")
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
@@ -176,7 +176,7 @@ private struct JobOverviewTab: View {
                 VStack(alignment: .trailing, spacing: 3) {
                     Text(String(format: "%.0f%%", job.margin))
                         .font(.system(size: 29, weight: .bold, design: .rounded))
-                        .foregroundStyle(.jpGreen)
+                        .foregroundStyle(Color.jpGreen)
                     Text("Margin")
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
