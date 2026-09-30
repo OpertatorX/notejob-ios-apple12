@@ -66,9 +66,16 @@ jobs:
           async function all(tok,path,ok=[200]){
             let url='https://api.appstoreconnect.apple.com'+path,out=[];
             while(url){
-              const r=await fetch(url,{headers:{Authorization:'Bearer '+tok}});
-              const t=await r.text(); let j={}; try{j=t?JSON.parse(t):{}}catch{}
-              if(!ok.includes(r.status)){
+              let r=null,t='',j={};
+              for(let attempt=1;attempt<=4;attempt++){
+                r=await fetch(url,{headers:{Authorization:'Bearer '+tok}});
+                t=await r.text(); j={}; try{j=t?JSON.parse(t):{}}catch{}
+                if(ok.includes(r.status)) break;
+                if(r.status>=500 && attempt<4){
+                  console.log('APPLE_RETRY='+attempt+'|status='+r.status+'|url='+url);
+                  await new Promise(resolve=>setTimeout(resolve,attempt*1500));
+                  continue;
+                }
                 const safe=j?.errors?.map(e=>({status:e.status,code:e.code,title:e.title,detail:e.detail}))??j;
                 throw new Error('GET '+url+' -> '+r.status+' '+JSON.stringify(safe));
               }
