@@ -47,7 +47,7 @@ build_injection = """
             }
 
 """
-anchor = "            // Selected build.\n"
+anchor = "// Selected build.\n"
 if anchor not in script:
     raise SystemExit("selected build anchor not found")
 script = script.replace(anchor, build_injection + anchor, 1)
@@ -86,22 +86,28 @@ availability_injection = """
             }
 
 """
-availability_anchor = "            // Subscription states.\n"
+availability_anchor = "// Subscription states.\n"
 if availability_anchor not in script:
     raise SystemExit("availability audit anchor not found")
 script = script.replace(availability_anchor, availability_injection + availability_anchor, 1)
 
-old_assert = """            const aa = appCheck.data?.data?.attributes || {};
-            if (aa.contentRightsDeclaration !== 'DOES_NOT_USE_THIRD_PARTY_CONTENT') {
-              throw new Error('Content rights did not persist');
-            }
-            console.log('DIRECT_ASC_FIX_VERIFIED=yes');"""
-new_assert = """            const aa = appCheck.data?.data?.attributes || {};
-            console.log('CONTENT_RIGHTS_VERIFY=' + String(aa.contentRightsDeclaration || 'null'));
-            console.log('DIRECT_ASC_FIX_VERIFIED=yes');"""
-if old_assert not in script:
+assert_pattern = re.compile(
+    r"(?P<i>\s*)const aa = appCheck\.data\?\.data\?\.attributes \|\| \{\};\s*\n"
+    r"(?P=i)if \(aa\.contentRightsDeclaration !== 'DOES_NOT_USE_THIRD_PARTY_CONTENT'\) \{\s*\n"
+    r"(?P=i)\s+throw new Error\('Content rights did not persist'\);\s*\n"
+    r"(?P=i)\}\s*\n"
+    r"(?P=i)console\.log\('DIRECT_ASC_FIX_VERIFIED=yes'\);"
+)
+m = assert_pattern.search(script)
+if not m:
     raise SystemExit("content-rights assertion anchor not found")
-script = script.replace(old_assert, new_assert, 1)
+indent = m.group("i")
+new_assert = (
+    indent + "const aa = appCheck.data?.data?.attributes || {};\n" +
+    indent + "console.log('CONTENT_RIGHTS_VERIFY=' + String(aa.contentRightsDeclaration || 'null'));\n" +
+    indent + "console.log('DIRECT_ASC_FIX_VERIFIED=yes');"
+)
+script = assert_pattern.sub(new_assert, script, count=1)
 
 Path("/tmp/asc-direct-fix.cjs").write_text(script)
 print("TEMP_ASC_SCRIPT_PATCHED=yes")
