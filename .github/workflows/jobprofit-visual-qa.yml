@@ -31,6 +31,21 @@ jobs:
         working-directory: jobprofit-native
         run: xcodegen generate
 
+      - name: Build native app
+        working-directory: jobprofit-native
+        shell: bash
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project JobProfit.xcodeproj \
+            -scheme JobProfit \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            build | tee xcodebuild.log
+
       - name: Select and boot simulator
         id: sim
         shell: bash
@@ -69,21 +84,6 @@ jobs:
             xcrun simctl list devices
             exit 31
           fi
-
-      - name: Build native app
-        working-directory: jobprofit-native
-        shell: bash
-        run: |
-          set -o pipefail
-          xcodebuild \
-            -project JobProfit.xcodeproj \
-            -scheme JobProfit \
-            -configuration Debug \
-            -sdk iphonesimulator \
-            -destination "id=${{ steps.sim.outputs.udid }}" \
-            -derivedDataPath DerivedData \
-            CODE_SIGNING_ALLOWED=NO \
-            build | tee xcodebuild.log
 
       - name: Install app
         working-directory: jobprofit-native
