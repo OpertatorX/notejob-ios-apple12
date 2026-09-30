@@ -1,0 +1,38 @@
+name: Patch OX ASC workflow
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/patch-ox-asc-workflow.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove obsolete availability attribute from direct patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path(".github/workflows/ox-invoice-asc-direct-final.yml")
+          s = p.read_text()
+          old = """                  contentRightsDeclaration: 'DOES_NOT_USE_THIRD_PARTY_CONTENT',
+                  availableInNewTerritories: true"""
+          new = """                  contentRightsDeclaration: 'DOES_NOT_USE_THIRD_PARTY_CONTENT'"""
+          if old not in s:
+              raise SystemExit("target block not found")
+          p.write_text(s.replace(old, new))
+          PY
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "OperatorX"
+          git config user.email "actions@users.noreply.github.com"
+          git add .github/workflows/ox-invoice-asc-direct-final.yml
+          git commit -m "Fix OX ASC direct content rights patch"
+          git push
