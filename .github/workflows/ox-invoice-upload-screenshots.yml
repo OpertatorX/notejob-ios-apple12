@@ -31,12 +31,20 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p screenshots/fr-FR screenshots/en-US
-          for locale in fr-FR en-US; do
-            short="fr"; [ "$locale" = "en-US" ] && short="en"
-            for n in 1 2 3 4 5; do
-              cat screenshots-b64/$short/${short}_${n}.part* | tr -d '\n\r ' | base64 -d > "screenshots/$locale/${n}.jpg"
-            done
-          done
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64, lzma
+          for locale, short in [('fr-FR','fr'),('en-US','en')]:
+              outdir=Path('screenshots')/locale
+              outdir.mkdir(parents=True,exist_ok=True)
+              for n in range(1,6):
+                  parts=sorted(Path('screenshots-b64',short).glob(f'{short}_{n}.part*'))
+                  if not parts:
+                      raise SystemExit(f'MISSING_PARTS {short}_{n}')
+                  encoded=''.join(p.read_text().strip() for p in parts)
+                  raw=lzma.decompress(base64.b85decode(encoded.encode('ascii')))
+                  (outdir/f'{n}.jpg').write_bytes(raw)
+          PY
           python3 -m pip install --disable-pip-version-check Pillow >/dev/null
           python3 - <<'PY'
           from PIL import Image
