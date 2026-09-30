@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "screenshots-b64/READY"
+      - ".github/workflows/ox-invoice-upload-screenshots.yml"
 
 permissions:
   contents: read
@@ -26,35 +26,12 @@ jobs:
         with:
           node-version: "24"
 
-      - name: Rebuild screenshot files from base64 chunks
+      - name: Generate App Store screenshots
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p screenshots/fr-FR screenshots/en-US
-          python3 - <<'PY'
-          from pathlib import Path
-          import base64, lzma
-          for locale, short in [('fr-FR','fr'),('en-US','en')]:
-              outdir=Path('screenshots')/locale
-              outdir.mkdir(parents=True,exist_ok=True)
-              for n in range(1,6):
-                  parts=sorted(Path('screenshots-b64',short).glob(f'{short}_{n}.part*'))
-                  if not parts:
-                      raise SystemExit(f'MISSING_PARTS {short}_{n}')
-                  encoded=''.join(p.read_text().strip() for p in parts)
-                  raw=lzma.decompress(base64.b85decode(encoded.encode('ascii')))
-                  (outdir/f'{n}.jpg').write_bytes(raw)
-          PY
           python3 -m pip install --disable-pip-version-check Pillow >/dev/null
-          python3 - <<'PY'
-          from PIL import Image
-          from pathlib import Path
-          for p in sorted(Path("screenshots").rglob("*.jpg")):
-              im=Image.open(p)
-              if im.size != (1242,2688):
-                  raise SystemExit(f"BAD_SIZE {p} {im.size}")
-              print("SCREEN_OK",p,im.size,p.stat().st_size)
-          PY
+          python3 scripts/render_ox_appstore_screens.py
 
       - name: Install EAS CLI library
         shell: bash
