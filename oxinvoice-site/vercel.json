@@ -1,4 +1,7 @@
 {
   "cleanUrls": true,
-  "trailingSlash": false
+  "trailingSlash": false,
+  "alias": [
+    "operatorx-ox-invoice.vercel.app"
+  ]
 }
