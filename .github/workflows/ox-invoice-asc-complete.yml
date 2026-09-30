@@ -1,0 +1,314 @@
+name: OX Invoice — ASC complete live setup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ox-invoice-asc-complete.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  complete-live-asc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      OX_EAS_PROJECT_ID: "a8ec463b-a530-41c9-af1f-c5499359f881"
+      OX_PROJECT_SLUG: "ox-invoice"
+      OX_BUNDLE_ID: "com.operatorx.oxinvoice"
+      OX_VERSION: "1.0"
+      OX_BUILD: "4"
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install EAS CLI library
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${EXPO_TOKEN:-}" || { echo "EXPO_TOKEN missing"; exit 20; }
+          mkdir -p /tmp/easlib
+          npm install --prefix /tmp/easlib eas-cli@latest --ignore-scripts --no-audit --no-fund >/dev/null
+
+      - name: Complete and verify App Store Connect setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/ox-asc-complete.cjs <<'NODE'
+          const crypto = require('crypto');
+          const EAS_ROOT = '/tmp/easlib/node_modules/eas-cli/build';
+          const { createGraphqlClient } = require(EAS_ROOT + '/commandUtils/context/contextUtils/createGraphqlClient.js');
+          const { getOwnerAccountForProjectIdAsync } = require(EAS_ROOT + '/project/projectUtils.js');
+          const { getAscApiKeyForAppSubmissionsAsync } = require(EAS_ROOT + '/credentials/ios/api/GraphqlClient.js');
+          const { AppStoreConnectApiKeyQuery } = require(EAS_ROOT + '/graphql/queries/AppStoreConnectApiKeyQuery.js');
+
+          const expoToken = process.env.EXPO_TOKEN;
+          const projectId = process.env.OX_EAS_PROJECT_ID;
+          const projectName = process.env.OX_PROJECT_SLUG;
+          const bundleId = process.env.OX_BUNDLE_ID;
+          const versionString = process.env.OX_VERSION;
+          const wantedBuild = process.env.OX_BUILD;
+
+          function b64url(input) { return Buffer.from(input).toString('base64url'); }
+          function makeAppleJwt(key) {
+            const now = Math.floor(Date.now() / 1000);
+            const header = { alg: 'ES256', kid: key.keyIdentifier, typ: 'JWT' };
+            const payload = { iss: key.issuerIdentifier, iat: now - 5, exp: now + 900, aud: 'appstoreconnect-v1' };
+            const signingInput = b64url(JSON.stringify(header)) + '.' + b64url(JSON.stringify(payload));
+            const sig = crypto.sign('sha256', Buffer.from(signingInput), { key: key.keyP8, dsaEncoding: 'ieee-p1363' });
+            return signingInput + '.' + sig.toString('base64url');
+          }
+
+          async function request(token, method, path, body = null, ok = [200]) {
+            const res = await fetch('https://api.appstoreconnect.apple.com' + path, {
+              method,
+              headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+              body: body ? JSON.stringify(body) : undefined
+            });
+            const txt = await res.text();
+            let data = null;
+            try { data = txt ? JSON.parse(txt) : null; } catch { data = { raw: txt.slice(0,500) }; }
+            if (!ok.includes(res.status)) {
+              const safe = data?.errors?.map(e => ({status:e.status,code:e.code,title:e.title,detail:e.detail,source:e.source})) ?? data;
+              throw new Error(method + ' ' + path + ' -> ' + res.status + ' ' + JSON.stringify(safe));
+            }
+            return { status: res.status, data };
+          }
+
+          async function listAll(token, path) {
+            const out = [];
+            let url = 'https://api.appstoreconnect.apple.com' + path;
+            while (url) {
+              const res = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+              const txt = await res.text();
+              let j = {};
+              try { j = txt ? JSON.parse(txt) : {}; } catch {}
+              if (!res.ok) {
+                const safe = j?.errors?.map(e => ({status:e.status,code:e.code,title:e.title,detail:e.detail})) ?? j;
+                throw new Error('GET ' + url + ' -> ' + res.status + ' ' + JSON.stringify(safe));
+              }
+              out.push(...(j.data || []));
+              url = j.links?.next || null;
+            }
+            return out;
+          }
+
+          (async () => {
+            const gql = createGraphqlClient({ accessToken: expoToken, sessionSecret: null });
+            const account = await getOwnerAccountForProjectIdAsync(gql, projectId);
+            const fragment = await getAscApiKeyForAppSubmissionsAsync(gql, {
+              account, projectName, bundleIdentifier: bundleId
+            });
+            if (!fragment) throw new Error('No ASC submission key assigned to OX Invoice');
+            const key = await AppStoreConnectApiKeyQuery.getByIdAsync(gql, fragment.id);
+            if (!key?.keyP8 || !key?.keyIdentifier || !key?.issuerIdentifier) throw new Error('Incomplete ASC key');
+            const token = makeAppleJwt(key);
+            console.log('ASC_KEY_RESOLVED=yes');
+
+            const apps = await listAll(token,
+              '/v1/apps?filter%5BbundleId%5D=' + encodeURIComponent(bundleId) +
+              '&fields%5Bapps%5D=name,bundleId,primaryLocale,contentRightsDeclaration'
+            );
+            if (apps.length !== 1) throw new Error('Expected one OX Invoice app');
+            const app = apps[0], appId = app.id;
+            console.log('APP_ID=' + appId);
+            console.log('APP_NAME=' + app.attributes?.name);
+            console.log('PRIMARY_LOCALE=' + app.attributes?.primaryLocale);
+
+            // Content rights: no third-party content.
+            if (app.attributes?.contentRightsDeclaration !== 'DOES_NOT_USE_THIRD_PARTY_CONTENT') {
+              await request(token, 'PATCH', '/v1/apps/' + appId, {
+                data: { type: 'apps', id: appId, attributes: { contentRightsDeclaration: 'DOES_NOT_USE_THIRD_PARTY_CONTENT' } }
+              }, [200]);
+              console.log('CONTENT_RIGHTS_FIXED=yes');
+            }
+            const appCheck = await request(token, 'GET',
+              '/v1/apps/' + appId + '?fields%5Bapps%5D=contentRightsDeclaration,primaryLocale');
+            console.log('CONTENT_RIGHTS=' + appCheck.data.data.attributes.contentRightsDeclaration);
+
+            // Version and selected build.
+            const versions = await listAll(token,
+              '/v1/apps/' + appId + '/appStoreVersions?filter%5Bplatform%5D=IOS&filter%5BversionString%5D=' +
+              encodeURIComponent(versionString) +
+              '&fields%5BappStoreVersions%5D=versionString,appVersionState,releaseType,copyright'
+            );
+            if (!versions.length) throw new Error('Version 1.0 missing');
+            const version = versions[0], versionId = version.id;
+            console.log('VERSION_ID=' + versionId);
+            console.log('VERSION_STATE=' + version.attributes?.appVersionState);
+            console.log('RELEASE_TYPE=' + version.attributes?.releaseType);
+            console.log('COPYRIGHT=' + String(version.attributes?.copyright || ''));
+
+            let selected = await request(token, 'GET',
+              '/v1/appStoreVersions/' + versionId + '/build?fields%5Bbuilds%5D=version,expired,processingState,buildAudienceType',
+              null, [200,404]);
+            if (!(selected.status === 200 && selected.data?.data?.attributes?.version === wantedBuild)) {
+              const builds = await listAll(token,
+                '/v1/builds?filter%5Bapp%5D=' + encodeURIComponent(appId) +
+                '&filter%5Bversion%5D=' + encodeURIComponent(wantedBuild) +
+                '&fields%5Bbuilds%5D=version,expired,processingState,buildAudienceType'
+              );
+              const eligible = builds.filter(b => b.attributes?.version === wantedBuild && !b.attributes?.expired && b.attributes?.processingState === 'VALID');
+              if (eligible.length !== 1) throw new Error('Expected exactly one valid build ' + wantedBuild + ', got ' + eligible.length);
+              await request(token, 'PATCH', '/v1/appStoreVersions/' + versionId + '/relationships/build',
+                { data: { type: 'builds', id: eligible[0].id } }, [204]);
+              console.log('BUILD_ATTACHED=yes');
+            }
+            selected = await request(token, 'GET',
+              '/v1/appStoreVersions/' + versionId + '/build?fields%5Bbuilds%5D=version,expired,processingState,buildAudienceType');
+            console.log('SELECTED_BUILD=' + selected.data.data.attributes.version);
+            console.log('SELECTED_BUILD_VALID=' + String(
+              selected.data.data.attributes.processingState === 'VALID' &&
+              selected.data.data.attributes.expired !== true &&
+              selected.data.data.attributes.buildAudienceType === 'APP_STORE_ELIGIBLE'
+            ));
+
+            // Store metadata localizations.
+            const locs = await listAll(token,
+              '/v1/appStoreVersions/' + versionId +
+              '/appStoreVersionLocalizations?fields%5BappStoreVersionLocalizations%5D=locale,description,keywords,marketingUrl,promotionalText,supportUrl'
+            );
+            for (const loc of locs) {
+              const a = loc.attributes || {};
+              console.log('LOCALE=' + a.locale +
+                '|description=' + (a.description ? 'yes' : 'no') +
+                '|keywords=' + (a.keywords ? 'yes' : 'no') +
+                '|promo=' + (a.promotionalText ? 'yes' : 'no') +
+                '|support=' + (a.supportUrl ? 'yes' : 'no') +
+                '|marketing=' + (a.marketingUrl ? 'yes' : 'no'));
+            }
+            const locales = locs.map(x=>x.attributes?.locale).filter(Boolean).sort();
+            if (!locales.includes('en-US') || !locales.includes('fr-FR')) throw new Error('FR/US localizations incomplete');
+
+            // Review detail must already be complete from the metadata push.
+            const review = await request(token, 'GET',
+              '/v1/appStoreVersions/' + versionId +
+              '/appStoreReviewDetail?fields%5BappStoreReviewDetails%5D=contactFirstName,contactLastName,contactPhone,contactEmail,demoAccountRequired,notes',
+              null, [200,404]);
+            if (!(review.status === 200 && review.data?.data)) throw new Error('Review detail missing');
+            const ra = review.data.data.attributes || {};
+            const contactComplete = ['contactFirstName','contactLastName','contactPhone','contactEmail']
+              .every(k => String(ra[k] || '').trim());
+            console.log('REVIEW_CONTACT_COMPLETE=' + (contactComplete ? 'yes' : 'no'));
+            console.log('DEMO_ACCOUNT_REQUIRED=' + String(ra.demoAccountRequired));
+            console.log('REVIEW_NOTES_PRESENT=' + (String(ra.notes || '').trim() ? 'yes' : 'no'));
+            if (!contactComplete || ra.demoAccountRequired !== false || !String(ra.notes || '').trim()) {
+              throw new Error('Review information incomplete');
+            }
+
+            // Create worldwide App Availability (175 territories) if it does not exist.
+            let av = await request(token, 'GET',
+              '/v1/apps/' + appId + '/appAvailabilityV2?fields%5BappAvailabilities%5D=availableInNewTerritories',
+              null, [200,404]);
+            if (av.status === 404) {
+              const territories = await listAll(token, '/v1/territories?limit=200');
+              const ids = territories.map(t=>t.id).filter(Boolean);
+              console.log('TERRITORIES_DISCOVERED=' + ids.length);
+              if (ids.length < 170) throw new Error('Unexpected territory count ' + ids.length);
+              const refs = [];
+              const included = [];
+              for (const tid of ids) {
+                const localId = '${territory-' + tid + '}';
+                refs.push({ type: 'territoryAvailabilities', id: localId });
+                included.push({
+                  type: 'territoryAvailabilities',
+                  id: localId,
+                  attributes: { available: true },
+                  relationships: { territory: { data: { type: 'territories', id: tid } } }
+                });
+              }
+              const created = await request(token, 'POST', '/v2/appAvailabilities', {
+                data: {
+                  type: 'appAvailabilities',
+                  attributes: { availableInNewTerritories: true },
+                  relationships: {
+                    app: { data: { type: 'apps', id: appId } },
+                    territoryAvailabilities: { data: refs }
+                  }
+                },
+                included
+              }, [201]);
+              console.log('AVAILABILITY_CREATED=yes');
+              console.log('AVAILABILITY_ID=' + created.data.data.id);
+            } else {
+              console.log('AVAILABILITY_CREATED=already_present');
+            }
+
+            // Verify availability after create.
+            av = await request(token, 'GET',
+              '/v1/apps/' + appId + '/appAvailabilityV2?fields%5BappAvailabilities%5D=availableInNewTerritories');
+            const availabilityId = av.data.data.id;
+            console.log('AVAILABLE_IN_NEW_TERRITORIES=' + String(av.data.data.attributes?.availableInNewTerritories));
+            const terrRows = await listAll(token,
+              '/v2/appAvailabilities/' + availabilityId +
+              '/territoryAvailabilities?limit=200&fields%5BterritoryAvailabilities%5D=available,contentStatuses,territory'
+            );
+            const availableCount = terrRows.filter(x => x.attributes?.available === true).length;
+            const unavailable = terrRows.filter(x => x.attributes?.available !== true);
+            console.log('TERRITORY_RECORDS=' + terrRows.length);
+            console.log('AVAILABLE_TERRITORIES=' + availableCount);
+            console.log('UNAVAILABLE_TERRITORIES=' + unavailable.length);
+            if (av.data.data.attributes?.availableInNewTerritories !== true || availableCount !== terrRows.length || terrRows.length < 170) {
+              throw new Error('Worldwide app availability verification failed');
+            }
+
+            // App info, categories, age rating.
+            const infos = await listAll(token,
+              '/v1/apps/' + appId + '/appInfos?fields%5BappInfos%5D=state,appStoreAgeRating'
+            );
+            if (!infos.length) throw new Error('App info missing');
+            const info = infos[0], infoId = info.id;
+            console.log('AGE_RATING=' + String(info.attributes?.appStoreAgeRating || ''));
+            const primary = await request(token, 'GET', '/v1/appInfos/' + infoId + '/primaryCategory', null, [200,404]);
+            const secondary = await request(token, 'GET', '/v1/appInfos/' + infoId + '/secondaryCategory', null, [200,404]);
+            console.log('PRIMARY_CATEGORY=' + String(primary.data?.data?.id || 'missing'));
+            console.log('SECONDARY_CATEGORY=' + String(secondary.data?.data?.id || 'missing'));
+
+            // Screenshot status — intentionally left for later.
+            for (const loc of locs) {
+              const sets = await listAll(token,
+                '/v1/appStoreVersionLocalizations/' + loc.id + '/appScreenshotSets?fields%5BappScreenshotSets%5D=screenshotDisplayType'
+              );
+              let shotCount = 0;
+              for (const set of sets) {
+                const shots = await listAll(token,
+                  '/v1/appScreenshotSets/' + set.id + '/appScreenshots?fields%5BappScreenshots%5D=fileName,assetDeliveryState'
+                );
+                shotCount += shots.length;
+              }
+              console.log('SCREENSHOTS_' + loc.attributes.locale + '=' + shotCount);
+            }
+
+            // Subscriptions.
+            const groups = await listAll(token,
+              '/v1/apps/' + appId + '/subscriptionGroups?fields%5BsubscriptionGroups%5D=referenceName'
+            );
+            console.log('SUBSCRIPTION_GROUPS=' + groups.length);
+            let subscriptionCount = 0;
+            for (const g of groups) {
+              const subs = await listAll(token,
+                '/v1/subscriptionGroups/' + g.id +
+                '/subscriptions?fields%5Bsubscriptions%5D=productId,state,subscriptionPeriod,reviewNote'
+              );
+              for (const s of subs) {
+                subscriptionCount++;
+                console.log('SUBSCRIPTION=' + s.attributes?.productId + ':' + s.attributes?.state);
+              }
+            }
+            if (subscriptionCount !== 2) throw new Error('Expected exactly 2 subscriptions');
+
+            // Pricing schedule should exist for the free app.
+            const ps = await request(token, 'GET', '/v1/apps/' + appId + '/appPriceSchedule', null, [200,404]);
+            console.log('APP_PRICE_SCHEDULE=' + (ps.status === 200 && ps.data?.data ? 'present' : 'missing'));
+
+            console.log('ASC_COMPLETE_SETUP=PASS');
+          })().catch(err => {
+            console.error('ASC_COMPLETE_SETUP=FAIL');
+            console.error(err.message);
+            process.exit(1);
+          });
+          NODE
+          node /tmp/ox-asc-complete.cjs
