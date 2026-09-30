@@ -15,27 +15,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Reconstruct JobProfit project
+      - name: Verify native sources
         shell: bash
         run: |
           set -euo pipefail
-          cat jobprofit-payload.part1 jobprofit-payload.part2 jobprofit-payload.part3 > jobprofit-project.b64
-          python3 - <<'PY'
-          import base64
-          from pathlib import Path
-          data = Path("jobprofit-project.b64").read_text().strip()
-          Path("jobprofit-project.zip").write_bytes(base64.b64decode(data))
-          PY
-          mkdir -p build-src
-          unzip -q jobprofit-project.zip -d build-src
-          echo "Reconstructed files:"
-          find build-src -maxdepth 2 -type f | sort
+          test -f jobprofit-native/project.yml
+          test -f jobprofit-native/JobProfit/JobProfitApp.swift
+          test -f jobprofit-native/JobProfit/VisualQARoot.swift
+          find jobprofit-native -maxdepth 2 -type f | sort
 
       - name: Install XcodeGen
         run: brew install xcodegen
 
       - name: Generate Xcode project
-        working-directory: build-src
+        working-directory: jobprofit-native
         run: xcodegen generate
 
       - name: Select simulator
@@ -48,14 +41,17 @@ jobs:
           data=json.loads(subprocess.check_output(["xcrun","simctl","list","devices","available","-j"]))
           preferred=[]
           fallback=[]
-          for runtime, devices in data["devices"].items():
+          for _, devices in data["devices"].items():
               for d in devices:
                   if d.get("isAvailable"):
-                      if "iPhone 16 Pro" == d["name"]:
+                      if d["name"] == "iPhone 16 Pro":
                           preferred.append(d["udid"])
                       elif d["name"].startswith("iPhone"):
                           fallback.append(d["udid"])
-          print((preferred or fallback)[0])
+          candidates=preferred or fallback
+          if not candidates:
+              raise SystemExit("No available iPhone simulator")
+          print(candidates[0])
           PY
           )
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
@@ -64,7 +60,7 @@ jobs:
           xcrun simctl bootstatus "$UDID" -b
 
       - name: Build native app
-        working-directory: build-src
+        working-directory: jobprofit-native
         shell: bash
         run: |
           set -o pipefail
@@ -79,7 +75,7 @@ jobs:
             build | tee xcodebuild.log
 
       - name: Install app
-        working-directory: build-src
+        working-directory: jobprofit-native
         shell: bash
         run: |
           set -euo pipefail
@@ -88,7 +84,7 @@ jobs:
           xcrun simctl install "${{ steps.sim.outputs.udid }}" "$APP"
 
       - name: Capture real SwiftUI screens
-        working-directory: build-src
+        working-directory: jobprofit-native
         shell: bash
         run: |
           set -euo pipefail
@@ -106,6 +102,6 @@ jobs:
         with:
           name: jobprofit-native-visual-qa
           path: |
-            build-src/screenshots/*.png
-            build-src/xcodebuild.log
+            jobprofit-native/screenshots/*.png
+            jobprofit-native/xcodebuild.log
           if-no-files-found: error
