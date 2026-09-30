@@ -4,8 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - ".github/workflows/ox-invoice-upload-screenshots.yml"
-      - "screenshots-b64/**"
+      - "screenshots-b64/READY"
 
 permissions:
   contents: read
@@ -38,6 +37,7 @@ jobs:
               cat screenshots-b64/$short/${short}_${n}.part* | tr -d '\n\r ' | base64 -d > "screenshots/$locale/${n}.jpg"
             done
           done
+          python3 -m pip install --disable-pip-version-check Pillow >/dev/null
           python3 - <<'PY'
           from PIL import Image
           from pathlib import Path
