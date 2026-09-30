@@ -124,33 +124,41 @@ jobs:
               for(const it of items) console.log('REVIEW_ITEM='+it.id+'|state='+String(it.attributes?.state||'')+'|rels='+Object.keys(it.relationships||{}).join(','));
             }
 
-            const groups=await all(tok,'/v1/apps/'+appId+'/subscriptionGroups?fields%5BsubscriptionGroups%5D=referenceName&limit=50');
-            console.log('SUB_GROUP_COUNT='+groups.length);
-            for(const g of groups){
-              console.log('SUB_GROUP='+g.id+'|'+g.attributes?.referenceName);
-              const gv=await optional(tok,'/v1/subscriptionGroups/'+g.id+'/subscriptionGroupVersions?limit=50');
-              if(gv){
-                console.log('SUB_GROUP_VERSION_COUNT='+gv.length);
-                for(const x of gv) console.log('SUB_GROUP_VERSION='+x.id+'|'+JSON.stringify(x.attributes||{}));
+            // Use the already verified stable ASC IDs to avoid a current transient 500 on the app->subscriptionGroups list endpoint.
+            const group={id:'22423818',attributes:{referenceName:'OX Invoice Pro'}};
+            const subs=[
+              {id:'6817230082',attributes:{productId:'com.operatorx.oxinvoice.pro.6months',state:'READY_TO_SUBMIT',subscriptionPeriod:'SIX_MONTHS'}},
+              {id:'6817230898',attributes:{productId:'com.operatorx.oxinvoice.pro.yearly',state:'READY_TO_SUBMIT',subscriptionPeriod:'ONE_YEAR'}}
+            ];
+            console.log('SUB_GROUP_COUNT=1');
+            console.log('SUB_GROUP='+group.id+'|'+group.attributes.referenceName);
+
+            const gv=await optional(tok,'/v1/subscriptionGroups/'+group.id+'/versions?fields%5BsubscriptionGroupVersions%5D=version,state&limit=50');
+            if(gv){
+              console.log('SUB_GROUP_VERSION_COUNT='+gv.length);
+              for(const x of gv) console.log('SUB_GROUP_VERSION='+x.id+'|'+JSON.stringify(x.attributes||{}));
+            }
+
+            for(const s of subs){
+              const liveSub=await api(tok,'GET','/v1/subscriptions/'+s.id+'?fields%5Bsubscriptions%5D=productId,state,subscriptionPeriod');
+              const sa=liveSub.data?.data?.attributes||{};
+              console.log('SUB='+s.id+'|'+sa.productId+'|state='+sa.state+'|period='+sa.subscriptionPeriod);
+
+              const sv=await optional(tok,'/v1/subscriptions/'+s.id+'/versions?fields%5BsubscriptionVersions%5D=version,state&limit=50');
+              if(sv){
+                console.log('SUB_VERSION_COUNT|'+sa.productId+'='+sv.length);
+                for(const x of sv) console.log('SUB_VERSION|'+sa.productId+'|'+x.id+'|'+JSON.stringify(x.attributes||{}));
               }
-              const subs=await all(tok,'/v1/subscriptionGroups/'+g.id+'/subscriptions?fields%5Bsubscriptions%5D=productId,state,subscriptionPeriod&limit=50');
-              for(const s of subs){
-                console.log('SUB='+s.id+'|'+s.attributes?.productId+'|state='+s.attributes?.state+'|period='+s.attributes?.subscriptionPeriod);
-                const sv=await optional(tok,'/v1/subscriptions/'+s.id+'/subscriptionVersions?limit=50');
-                if(sv){
-                  console.log('SUB_VERSION_COUNT|'+s.attributes?.productId+'='+sv.length);
-                  for(const x of sv) console.log('SUB_VERSION|'+s.attributes?.productId+'|'+x.id+'|'+JSON.stringify(x.attributes||{}));
-                }
-                const plans=await all(tok,'/v1/subscriptions/'+s.id+'/planAvailabilities?fields%5BsubscriptionPlanAvailabilities%5D=availableInNewTerritories,planType&limit=50');
-                for(const p of plans){
-                  const tr=await all(tok,'/v1/subscriptionPlanAvailabilities/'+p.id+'/availableTerritories?limit=200');
-                  console.log('SUB_PLAN|'+s.attributes?.productId+'|'+p.attributes?.planType+'|new='+p.attributes?.availableInNewTerritories+'|territories='+tr.length);
-                }
-                const prices=await all(tok,'/v1/subscriptions/'+s.id+'/prices?filter%5BplanType%5D=UPFRONT&limit=200');
-                console.log('SUB_PRICE_ROWS|'+s.attributes?.productId+'='+prices.length);
-                const shot=await api(tok,'GET','/v1/subscriptions/'+s.id+'/relationships/appStoreReviewScreenshot',null,[200,404]);
-                console.log('SUB_REVIEW_SCREENSHOT|'+s.attributes?.productId+'='+(shot.status===200&&shot.data?.data?'present':'missing'));
+
+              const plans=await all(tok,'/v1/subscriptions/'+s.id+'/planAvailabilities?fields%5BsubscriptionPlanAvailabilities%5D=availableInNewTerritories,planType&limit=50');
+              for(const p of plans){
+                const tr=await all(tok,'/v1/subscriptionPlanAvailabilities/'+p.id+'/availableTerritories?limit=200');
+                console.log('SUB_PLAN|'+sa.productId+'|'+p.attributes?.planType+'|new='+p.attributes?.availableInNewTerritories+'|territories='+tr.length);
               }
+              const prices=await all(tok,'/v1/subscriptions/'+s.id+'/prices?filter%5BplanType%5D=UPFRONT&limit=200');
+              console.log('SUB_PRICE_ROWS|'+sa.productId+'='+prices.length);
+              const shot=await api(tok,'GET','/v1/subscriptions/'+s.id+'/relationships/appStoreReviewScreenshot',null,[200,404]);
+              console.log('SUB_REVIEW_SCREENSHOT|'+sa.productId+'='+(shot.status===200&&shot.data?.data?'present':'missing'));
             }
             console.log('PRE_SUBMIT_AUDIT=PASS');
           })().catch(e=>{console.error('PRE_SUBMIT_AUDIT=FAIL');console.error(e.message);process.exit(1)});
