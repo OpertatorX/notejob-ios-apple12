@@ -1,0 +1,53 @@
+name: OX Invoice ASC Gap Audit
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/ox-invoice-asc-gap-audit.yml
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      ASC_KEY_IDENTIFIER: 86PUKZ4ZVC
+      ASC_APP_ID: "6817043240"
+    steps:
+      - name: Install
+        run: python3 -m pip install --quiet pyjwt cryptography requests
+      - name: Check remaining live ASC gaps
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,time,json,requests,jwt
+          expo=os.environ["EXPO_TOKEN"]; kid=os.environ["ASC_KEY_IDENTIFIER"]; app=os.environ["ASC_APP_ID"]
+          gql="https://api.expo.dev/graphql"; h={"authorization":f"Bearer {expo}","content-type":"application/json"}
+          q1='query Keys($accountName:String!){account{byName(accountName:$accountName){appStoreConnectApiKeysPaginated(first:100){edges{node{id issuerIdentifier keyIdentifier}}}}}}'
+          r=requests.post(gql,headers=h,json={"query":q1,"variables":{"accountName":"operatorx"}},timeout=30); r.raise_for_status()
+          meta=next(x["node"] for x in r.json()["data"]["account"]["byName"]["appStoreConnectApiKeysPaginated"]["edges"] if x["node"]["keyIdentifier"]==kid)
+          q2='query Key($id:ID!){appStoreConnectApiKey{byId(id:$id){issuerIdentifier keyP8}}}'
+          r=requests.post(gql,headers=h,json={"query":q2,"variables":{"id":meta["id"]}},timeout=30); r.raise_for_status()
+          k=r.json()["data"]["appStoreConnectApiKey"]["byId"]; now=int(time.time())
+          t=jwt.encode({"iat":now,"exp":now+900,"aud":"appstoreconnect-v1","iss":k["issuerIdentifier"]},k["keyP8"],algorithm="ES256",headers={"kid":kid,"typ":"JWT"})
+          H={"Authorization":f"Bearer {t}"}; B="https://api.appstoreconnect.apple.com"
+          def g(path,params=None):
+            r=requests.get(B+path,headers=H,params=params,timeout=45)
+            print("HTTP|"+path+"|"+str(r.status_code))
+            if r.status_code==200: return r.json()
+            try: print("ERR|"+json.dumps(r.json().get("errors",[]),ensure_ascii=False))
+            except: print("ERR|"+r.text[:500])
+            return None
+          x=g(f"/v1/apps/{app}")
+          if x: print("APP_ALL_ATTRS="+json.dumps(x["data"].get("attributes",{}),sort_keys=True,ensure_ascii=False))
+          x=g("/v1/builds",{"filter[app]":app,"filter[version]":"4","fields[builds]":"version,uploadedDate,expirationDate,expired,minOsVersion,processingState,buildAudienceType,usesNonExemptEncryption","limit":"50"})
+          if x:
+            print("BUILD4_COUNT="+str(len(x.get("data",[]))))
+            for b in x.get("data",[]): print("BUILD4="+b["id"]+"|"+json.dumps(b.get("attributes",{}),sort_keys=True))
+          x=g(f"/v1/apps/{app}/relationships/appAvailabilityV2")
+          if x: print("AVAILABILITY_LINK="+json.dumps(x.get("data"),sort_keys=True))
+          x=g(f"/v1/appPriceSchedules/{app}",{"include":"baseTerritory,manualPrices","fields[appPrices]":"manual,startDate,endDate,appPricePoint,territory","fields[territories]":"currency","limit[manualPrices]":"50"})
+          if x:
+            print("PRICE_INCLUDED="+json.dumps([{"type":i.get("type"),"id":i.get("id"),"attrs":i.get("attributes",{})} for i in x.get("included",[])],sort_keys=True))
+          PY
