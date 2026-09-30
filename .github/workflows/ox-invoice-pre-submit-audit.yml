@@ -1,0 +1,151 @@
+name: OX Invoice — pre-submit live audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ox-invoice-pre-submit-audit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      OX_EAS_PROJECT_ID: "a8ec463b-a530-41c9-af1f-c5499359f881"
+      OX_PROJECT_SLUG: "ox-invoice"
+      OX_BUNDLE_ID: "com.operatorx.oxinvoice"
+      OX_VERSION: "1.0"
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install EAS CLI library
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${EXPO_TOKEN:-}" || exit 20
+          mkdir -p /tmp/easlib
+          npm install --prefix /tmp/easlib eas-cli@latest --ignore-scripts --no-audit --no-fund >/dev/null
+      - name: Audit review-submission objects
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/audit.cjs <<'NODE'
+          const crypto=require('crypto');
+          const ROOT='/tmp/easlib/node_modules/eas-cli/build';
+          const {createGraphqlClient}=require(ROOT+'/commandUtils/context/contextUtils/createGraphqlClient.js');
+          const {getOwnerAccountForProjectIdAsync}=require(ROOT+'/project/projectUtils.js');
+          const {getAscApiKeyForAppSubmissionsAsync}=require(ROOT+'/credentials/ios/api/GraphqlClient.js');
+          const {AppStoreConnectApiKeyQuery}=require(ROOT+'/graphql/queries/AppStoreConnectApiKeyQuery.js');
+
+          function b64url(x){return Buffer.from(x).toString('base64url')}
+          function jwtFor(k){
+            const now=Math.floor(Date.now()/1000);
+            const h={alg:'ES256',kid:k.keyIdentifier,typ:'JWT'};
+            const p={iss:k.issuerIdentifier,iat:now-5,exp:now+900,aud:'appstoreconnect-v1'};
+            const s=b64url(JSON.stringify(h))+'.'+b64url(JSON.stringify(p));
+            const sig=crypto.sign('sha256',Buffer.from(s),{key:k.keyP8,dsaEncoding:'ieee-p1363'});
+            return s+'.'+sig.toString('base64url');
+          }
+          async function api(tok,method,path,body=null,ok=[200]){
+            const r=await fetch('https://api.appstoreconnect.apple.com'+path,{
+              method,headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},
+              body:body?JSON.stringify(body):undefined
+            });
+            const t=await r.text(); let j={}; try{j=t?JSON.parse(t):{}}catch{}
+            if(!ok.includes(r.status)){
+              const safe=j?.errors?.map(e=>({status:e.status,code:e.code,title:e.title,detail:e.detail}))??j;
+              throw new Error(method+' '+path+' -> '+r.status+' '+JSON.stringify(safe));
+            }
+            return {status:r.status,data:j};
+          }
+          async function all(tok,path,ok=[200]){
+            let url='https://api.appstoreconnect.apple.com'+path,out=[];
+            while(url){
+              const r=await fetch(url,{headers:{Authorization:'Bearer '+tok}});
+              const t=await r.text(); let j={}; try{j=t?JSON.parse(t):{}}catch{}
+              if(!ok.includes(r.status)){
+                const safe=j?.errors?.map(e=>({status:e.status,code:e.code,title:e.title,detail:e.detail}))??j;
+                throw new Error('GET '+url+' -> '+r.status+' '+JSON.stringify(safe));
+              }
+              out.push(...(j.data||[])); url=j.links?.next||null;
+            }
+            return out;
+          }
+          async function optional(tok,path){
+            try{return await all(tok,path,[200])}catch(e){console.log('OPTIONAL_FAIL='+path+'|'+e.message); return null}
+          }
+
+          (async()=>{
+            const gql=createGraphqlClient({accessToken:process.env.EXPO_TOKEN,sessionSecret:null});
+            const account=await getOwnerAccountForProjectIdAsync(gql,process.env.OX_EAS_PROJECT_ID);
+            const frag=await getAscApiKeyForAppSubmissionsAsync(gql,{
+              account,projectName:process.env.OX_PROJECT_SLUG,bundleIdentifier:process.env.OX_BUNDLE_ID
+            });
+            const key=await AppStoreConnectApiKeyQuery.getByIdAsync(gql,frag.id);
+            const tok=jwtFor(key);
+            const apps=await all(tok,'/v1/apps?filter%5BbundleId%5D='+encodeURIComponent(process.env.OX_BUNDLE_ID)+'&fields%5Bapps%5D=name,bundleId');
+            const app=apps[0],appId=app.id;
+            console.log('APP_ID='+appId);
+
+            const vers=await all(tok,'/v1/apps/'+appId+'/appStoreVersions?filter%5Bplatform%5D=IOS&filter%5BversionString%5D='+encodeURIComponent(process.env.OX_VERSION)+'&fields%5BappStoreVersions%5D=versionString,appVersionState');
+            const v=vers[0],vid=v.id;
+            console.log('APP_VERSION_ID='+vid);
+            console.log('APP_VERSION_STATE='+v.attributes?.appVersionState);
+
+            const locs=await all(tok,'/v1/appStoreVersions/'+vid+'/appStoreVersionLocalizations?fields%5BappStoreVersionLocalizations%5D=locale');
+            for(const loc of locs){
+              const sets=await all(tok,'/v1/appStoreVersionLocalizations/'+loc.id+'/appScreenshotSets?fields%5BappScreenshotSets%5D=screenshotDisplayType');
+              let n=0; const types=[];
+              for(const set of sets){
+                const shots=await all(tok,'/v1/appScreenshotSets/'+set.id+'/appScreenshots?fields%5BappScreenshots%5D=fileName');
+                n+=shots.length; types.push((set.attributes?.screenshotDisplayType||'?')+':'+shots.length);
+              }
+              console.log('SCREENSHOTS='+loc.attributes?.locale+'|total='+n+'|sets='+types.join(','));
+            }
+
+            const rs=await all(tok,'/v1/apps/'+appId+'/reviewSubmissions?fields%5BreviewSubmissions%5D=platform,state,submittedDate&limit=50');
+            console.log('REVIEW_SUBMISSION_COUNT='+rs.length);
+            for(const x of rs){
+              console.log('REVIEW_SUBMISSION='+x.id+'|state='+String(x.attributes?.state||'')+'|platform='+String(x.attributes?.platform||'')+'|submitted='+String(x.attributes?.submittedDate||''));
+              const items=await all(tok,'/v1/reviewSubmissions/'+x.id+'/items?fields%5BreviewSubmissionItems%5D=state&limit=200');
+              console.log('REVIEW_ITEM_COUNT='+items.length);
+              for(const it of items) console.log('REVIEW_ITEM='+it.id+'|state='+String(it.attributes?.state||'')+'|rels='+Object.keys(it.relationships||{}).join(','));
+            }
+
+            const groups=await all(tok,'/v1/apps/'+appId+'/subscriptionGroups?fields%5BsubscriptionGroups%5D=referenceName&limit=50');
+            console.log('SUB_GROUP_COUNT='+groups.length);
+            for(const g of groups){
+              console.log('SUB_GROUP='+g.id+'|'+g.attributes?.referenceName);
+              const gv=await optional(tok,'/v1/subscriptionGroups/'+g.id+'/subscriptionGroupVersions?limit=50');
+              if(gv){
+                console.log('SUB_GROUP_VERSION_COUNT='+gv.length);
+                for(const x of gv) console.log('SUB_GROUP_VERSION='+x.id+'|'+JSON.stringify(x.attributes||{}));
+              }
+              const subs=await all(tok,'/v1/subscriptionGroups/'+g.id+'/subscriptions?fields%5Bsubscriptions%5D=productId,state,subscriptionPeriod&limit=50');
+              for(const s of subs){
+                console.log('SUB='+s.id+'|'+s.attributes?.productId+'|state='+s.attributes?.state+'|period='+s.attributes?.subscriptionPeriod);
+                const sv=await optional(tok,'/v1/subscriptions/'+s.id+'/subscriptionVersions?limit=50');
+                if(sv){
+                  console.log('SUB_VERSION_COUNT|'+s.attributes?.productId+'='+sv.length);
+                  for(const x of sv) console.log('SUB_VERSION|'+s.attributes?.productId+'|'+x.id+'|'+JSON.stringify(x.attributes||{}));
+                }
+                const plans=await all(tok,'/v1/subscriptions/'+s.id+'/planAvailabilities?fields%5BsubscriptionPlanAvailabilities%5D=availableInNewTerritories,planType&limit=50');
+                for(const p of plans){
+                  const tr=await all(tok,'/v1/subscriptionPlanAvailabilities/'+p.id+'/availableTerritories?limit=200');
+                  console.log('SUB_PLAN|'+s.attributes?.productId+'|'+p.attributes?.planType+'|new='+p.attributes?.availableInNewTerritories+'|territories='+tr.length);
+                }
+                const prices=await all(tok,'/v1/subscriptions/'+s.id+'/prices?filter%5BplanType%5D=UPFRONT&limit=200');
+                console.log('SUB_PRICE_ROWS|'+s.attributes?.productId+'='+prices.length);
+                const shot=await api(tok,'GET','/v1/subscriptions/'+s.id+'/relationships/appStoreReviewScreenshot',null,[200,404]);
+                console.log('SUB_REVIEW_SCREENSHOT|'+s.attributes?.productId+'='+(shot.status===200&&shot.data?.data?'present':'missing'));
+              }
+            }
+            console.log('PRE_SUBMIT_AUDIT=PASS');
+          })().catch(e=>{console.error('PRE_SUBMIT_AUDIT=FAIL');console.error(e.message);process.exit(1)});
+          NODE
+          node /tmp/audit.cjs
