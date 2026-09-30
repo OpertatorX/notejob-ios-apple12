@@ -1,0 +1,106 @@
+name: JobProfit Native Visual QA
+
+on:
+  push:
+    branches:
+      - jobprofit-preview
+  workflow_dispatch:
+
+jobs:
+  visual-qa:
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct JobProfit project
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat jobprofit-payload.part1 jobprofit-payload.part2 jobprofit-payload.part3 > jobprofit-project.b64
+          base64 --decode jobprofit-project.b64 > jobprofit-project.zip
+          mkdir -p build-src
+          unzip -q jobprofit-project.zip -d build-src
+          echo "Reconstructed files:"
+          find build-src -maxdepth 2 -type f | sort
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: build-src
+        run: xcodegen generate
+
+      - name: Select simulator
+        id: sim
+        shell: bash
+        run: |
+          set -euo pipefail
+          UDID=$(python3 - <<'PY'
+          import json, subprocess
+          data=json.loads(subprocess.check_output(["xcrun","simctl","list","devices","available","-j"]))
+          preferred=[]
+          fallback=[]
+          for runtime, devices in data["devices"].items():
+              for d in devices:
+                  if d.get("isAvailable"):
+                      if "iPhone 16 Pro" == d["name"]:
+                          preferred.append(d["udid"])
+                      elif d["name"].startswith("iPhone"):
+                          fallback.append(d["udid"])
+          print((preferred or fallback)[0])
+          PY
+          )
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          echo "Using simulator $UDID"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+
+      - name: Build native app
+        working-directory: build-src
+        shell: bash
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project JobProfit.xcodeproj \
+            -scheme JobProfit \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            build | tee xcodebuild.log
+
+      - name: Install app
+        working-directory: build-src
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="DerivedData/Build/Products/Debug-iphonesimulator/JobProfit.app"
+          test -d "$APP"
+          xcrun simctl install "${{ steps.sim.outputs.udid }}" "$APP"
+
+      - name: Capture real SwiftUI screens
+        working-directory: build-src
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p screenshots
+          for SCREEN in overview jobs detail compare addCost activity insights jobTypes settings; do
+            xcrun simctl terminate "${{ steps.sim.outputs.udid }}" com.operatorx.jobprofit || true
+            xcrun simctl launch "${{ steps.sim.outputs.udid }}" com.operatorx.jobprofit --visual-qa "$SCREEN"
+            sleep 2
+            xcrun simctl io "${{ steps.sim.outputs.udid }}" screenshot "screenshots/$SCREEN.png"
+          done
+          ls -lh screenshots
+
+      - name: Upload screenshots and build log
+        uses: actions/upload-artifact@v4
+        with:
+          name: jobprofit-native-visual-qa
+          path: |
+            build-src/screenshots/*.png
+            build-src/xcodebuild.log
+          if-no-files-found: error
