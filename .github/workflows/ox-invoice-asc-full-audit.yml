@@ -75,7 +75,7 @@ jobs:
             print(f"APP_{k}={aa.get(k)}")
 
           print("=== APP INFO / LOCALIZATIONS / CATEGORIES / AGE ===")
-          infos=req(f"/v1/apps/{app_id}/appInfos",{"fields[appInfos]":"appStoreState,state,appStoreAgeRating,australiaAgeRating,brazilAgeRating,brazilAgeRatingV2,franceAgeRating,koreaAgeRating,kidsAgeBand","limit":"50"})
+          infos=req(f"/v1/apps/{app_id}/appInfos",{"fields[appInfos]":"appStoreState,state,appStoreAgeRating,australiaAgeRating,brazilAgeRating,brazilAgeRatingV2,franceAgeRating,koreaAgeRating","limit":"50"})
           info_rows=data_list(infos)
           print("APP_INFO_COUNT="+str(len(info_rows)))
           for info in info_rows:
