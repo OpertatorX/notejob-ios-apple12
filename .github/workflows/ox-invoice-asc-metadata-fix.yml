@@ -38,6 +38,11 @@ jobs:
           test -n "${EXPO_TOKEN:-}" || { echo "EXPO_TOKEN missing"; exit 20; }
           npx --yes eas-cli@latest whoami
 
+      - name: Install NoteJob dependencies for Expo config
+        working-directory: notejob
+        shell: bash
+        run: npm install --legacy-peer-deps --ignore-scripts --no-audit --no-fund
+
       - name: Pull existing Apple review contact without exposing it
         working-directory: notejob
         shell: bash
@@ -62,6 +67,11 @@ jobs:
           fs.writeFileSync(process.env.RUNNER_TEMP + '/ox-review-contact.json', JSON.stringify(contact));
           console.log('Existing Apple review contact recovered: complete=yes');
           NODE
+
+      - name: Install OX Invoice dependencies for Expo config
+        working-directory: ox
+        shell: bash
+        run: npm install --legacy-peer-deps --ignore-scripts --no-audit --no-fund
 
       - name: Inject OX Invoice review information
         working-directory: ox
