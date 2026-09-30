@@ -1,0 +1,277 @@
+name: OX Invoice — ASC direct final fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ox-invoice-asc-direct-final.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  asc-direct-fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      OX_EAS_PROJECT_ID: "a8ec463b-a530-41c9-af1f-c5499359f881"
+      OX_PROJECT_SLUG: "ox-invoice"
+      OX_BUNDLE_ID: "com.operatorx.oxinvoice"
+      OX_VERSION: "1.0"
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install EAS CLI library
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${EXPO_TOKEN:-}" || { echo "EXPO_TOKEN missing"; exit 20; }
+          mkdir -p /tmp/easlib
+          npm install --prefix /tmp/easlib eas-cli@latest --ignore-scripts --no-audit --no-fund >/dev/null
+
+      - name: Fix safe ASC fields and audit live state
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/asc-direct-fix.cjs <<'NODE'
+          const crypto = require('crypto');
+          const EAS_ROOT = '/tmp/easlib/node_modules/eas-cli/build';
+          const { createGraphqlClient } = require(EAS_ROOT + '/commandUtils/context/contextUtils/createGraphqlClient.js');
+          const { getOwnerAccountForProjectIdAsync } = require(EAS_ROOT + '/project/projectUtils.js');
+          const { getAscApiKeyForAppSubmissionsAsync } = require(EAS_ROOT + '/credentials/ios/api/GraphqlClient.js');
+          const { AppStoreConnectApiKeyQuery } = require(EAS_ROOT + '/graphql/queries/AppStoreConnectApiKeyQuery.js');
+
+          const expoToken = process.env.EXPO_TOKEN;
+          const projectId = process.env.OX_EAS_PROJECT_ID;
+          const projectName = process.env.OX_PROJECT_SLUG;
+          const bundleId = process.env.OX_BUNDLE_ID;
+          const versionString = process.env.OX_VERSION;
+
+          function b64url(input) {
+            return Buffer.from(input).toString('base64url');
+          }
+
+          function makeAppleJwt(key) {
+            if (!key.keyP8 || !key.keyIdentifier) throw new Error('Incomplete ASC key from EAS');
+            const now = Math.floor(Date.now() / 1000);
+            const header = { alg: 'ES256', kid: key.keyIdentifier, typ: 'JWT' };
+            const payload = {
+              ...(key.issuerIdentifier ? { iss: key.issuerIdentifier } : {}),
+              iat: now - 5,
+              exp: now + 900,
+              aud: 'appstoreconnect-v1'
+            };
+            const signingInput = b64url(JSON.stringify(header)) + '.' + b64url(JSON.stringify(payload));
+            const sig = crypto.sign('sha256', Buffer.from(signingInput), {
+              key: key.keyP8,
+              dsaEncoding: 'ieee-p1363'
+            });
+            return signingInput + '.' + sig.toString('base64url');
+          }
+
+          async function jsonRequest(token, method, path, body, ok = [200]) {
+            const res = await fetch('https://api.appstoreconnect.apple.com' + path, {
+              method,
+              headers: {
+                Authorization: 'Bearer ' + token,
+                'Content-Type': 'application/json'
+              },
+              body: body ? JSON.stringify(body) : undefined
+            });
+            const txt = await res.text();
+            let data = null;
+            try { data = txt ? JSON.parse(txt) : null; } catch { data = { raw: txt.slice(0,500) }; }
+            if (!ok.includes(res.status)) {
+              const safe = data?.errors?.map(e => ({ status:e.status, code:e.code, title:e.title, detail:e.detail })) ?? data;
+              throw new Error(method + ' ' + path + ' -> ' + res.status + ' ' + JSON.stringify(safe));
+            }
+            return { status: res.status, data };
+          }
+
+          async function getAll(token, path) {
+            const out = [];
+            let url = 'https://api.appstoreconnect.apple.com' + path;
+            while (url) {
+              const res = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+              const txt = await res.text();
+              let j;
+              try { j = txt ? JSON.parse(txt) : {}; } catch { throw new Error('Invalid JSON from ' + url); }
+              if (!res.ok) {
+                const safe = j?.errors?.map(e => ({ status:e.status, code:e.code, title:e.title, detail:e.detail })) ?? j;
+                throw new Error('GET ' + url + ' -> ' + res.status + ' ' + JSON.stringify(safe));
+              }
+              out.push(...(j.data || []));
+              url = j.links?.next || null;
+            }
+            return out;
+          }
+
+          (async () => {
+            // Retrieve the already-stored ASC API key from EAS only in memory.
+            const gql = createGraphqlClient({ accessToken: expoToken, sessionSecret: null });
+            const account = await getOwnerAccountForProjectIdAsync(gql, projectId);
+            const fragment = await getAscApiKeyForAppSubmissionsAsync(gql, {
+              account,
+              projectName,
+              bundleIdentifier: bundleId
+            });
+            if (!fragment) throw new Error('No ASC submission key assigned to OX Invoice');
+            const key = await AppStoreConnectApiKeyQuery.getByIdAsync(gql, fragment.id);
+            const token = makeAppleJwt(key);
+            console.log('ASC_KEY_RESOLVED=yes');
+
+            // Resolve app live.
+            const apps = await getAll(token,
+              '/v1/apps?filter%5BbundleId%5D=' + encodeURIComponent(bundleId) +
+              '&fields%5Bapps%5D=name,bundleId,primaryLocale,contentRightsDeclaration,availableInNewTerritories'
+            );
+            if (apps.length !== 1) throw new Error('Expected one OX Invoice app, got ' + apps.length);
+            const app = apps[0];
+            const appId = app.id;
+            const before = app.attributes || {};
+            console.log('APP_ID=' + appId);
+            console.log('PRIMARY_LOCALE=' + String(before.primaryLocale || ''));
+            console.log('CONTENT_RIGHTS_BEFORE=' + String(before.contentRightsDeclaration || 'null'));
+            console.log('NEW_TERRITORIES_BEFORE=' + String(before.availableInNewTerritories));
+
+            // Safe desired values for OX Invoice.
+            const patchBody = {
+              data: {
+                type: 'apps',
+                id: appId,
+                attributes: {
+                  contentRightsDeclaration: 'DOES_NOT_USE_THIRD_PARTY_CONTENT',
+                  availableInNewTerritories: true
+                }
+              }
+            };
+            const patched = await jsonRequest(token, 'PATCH', '/v1/apps/' + appId, patchBody, [200]);
+            const pa = patched.data?.data?.attributes || {};
+            console.log('CONTENT_RIGHTS_AFTER=' + String(pa.contentRightsDeclaration || ''));
+            console.log('NEW_TERRITORIES_AFTER=' + String(pa.availableInNewTerritories));
+
+            // Version 1.0.
+            const versions = await getAll(token,
+              '/v1/apps/' + appId + '/appStoreVersions?filter%5Bplatform%5D=IOS&filter%5BversionString%5D=' +
+              encodeURIComponent(versionString) +
+              '&fields%5BappStoreVersions%5D=versionString,appStoreState,platform'
+            );
+            if (!versions.length) throw new Error('App Store version 1.0 not found');
+            const version = versions[0];
+            const versionId = version.id;
+            console.log('VERSION_ID=' + versionId);
+            console.log('VERSION_STATE=' + String(version.attributes?.appStoreState || ''));
+
+            // Selected build.
+            const buildRes = await jsonRequest(
+              token, 'GET',
+              '/v1/appStoreVersions/' + versionId + '/build?fields%5Bbuilds%5D=version,expired,processingState',
+              null, [200,404]
+            );
+            if (buildRes.status === 200 && buildRes.data?.data) {
+              console.log('SELECTED_BUILD=' + String(buildRes.data.data.attributes?.version || ''));
+              console.log('SELECTED_BUILD_EXPIRED=' + String(buildRes.data.data.attributes?.expired));
+              console.log('SELECTED_BUILD_PROCESSING=' + String(buildRes.data.data.attributes?.processingState || ''));
+            } else {
+              console.log('SELECTED_BUILD=MISSING');
+            }
+
+            // Review info.
+            const reviewRes = await jsonRequest(
+              token, 'GET',
+              '/v1/appStoreVersions/' + versionId +
+              '/appStoreReviewDetail?fields%5BappStoreReviewDetails%5D=contactFirstName,contactLastName,contactPhone,contactEmail,demoAccountRequired,notes',
+              null, [200,404]
+            );
+            if (reviewRes.status === 200 && reviewRes.data?.data) {
+              const ra = reviewRes.data.data.attributes || {};
+              const complete = ['contactFirstName','contactLastName','contactPhone','contactEmail']
+                .every(k => String(ra[k] || '').trim());
+              console.log('REVIEW_CONTACT_COMPLETE=' + (complete ? 'yes' : 'no'));
+              console.log('DEMO_ACCOUNT_REQUIRED=' + String(ra.demoAccountRequired));
+              console.log('REVIEW_NOTES_PRESENT=' + (String(ra.notes || '').trim() ? 'yes' : 'no'));
+            } else {
+              console.log('REVIEW_DETAIL=MISSING');
+            }
+
+            // Localizations.
+            const locs = await getAll(
+              token,
+              '/v1/appStoreVersions/' + versionId +
+              '/appStoreVersionLocalizations?fields%5BappStoreVersionLocalizations%5D=locale'
+            );
+            const locales = locs.map(x => x.attributes?.locale).filter(Boolean).sort();
+            console.log('VERSION_LOCALES=' + locales.join(','));
+
+            // Correct AppAvailabilityV2 audit.
+            const avRes = await jsonRequest(
+              token, 'GET',
+              '/v1/apps/' + appId + '/appAvailabilityV2?fields%5BappAvailabilities%5D=availableInNewTerritories',
+              null, [200,404]
+            );
+            if (avRes.status === 200 && avRes.data?.data) {
+              const av = avRes.data.data;
+              console.log('AVAILABILITY_V2=present');
+              console.log('AVAILABILITY_ID=' + av.id);
+              console.log('AVAILABILITY_NEW_TERRITORIES=' + String(av.attributes?.availableInNewTerritories));
+              const territories = await getAll(
+                token,
+                '/v2/appAvailabilities/' + av.id +
+                '/territoryAvailabilities?limit=200&fields%5BterritoryAvailabilities%5D=available,releaseDate,preOrderEnabled,territory'
+              );
+              const available = territories.filter(x => x.attributes?.available === true);
+              const unavailable = territories.filter(x => x.attributes?.available !== true);
+              console.log('TERRITORY_RECORDS=' + territories.length);
+              console.log('AVAILABLE_TERRITORIES=' + available.length);
+              console.log('UNAVAILABLE_TERRITORIES=' + unavailable.length);
+              if (unavailable.length) {
+                const ids = unavailable.slice(0,30).map(x => x.relationships?.territory?.data?.id || x.id);
+                console.log('UNAVAILABLE_SAMPLE=' + ids.join(','));
+              }
+            } else {
+              console.log('AVAILABILITY_V2=missing');
+            }
+
+            // Subscription states.
+            const groups = await getAll(
+              token,
+              '/v1/apps/' + appId + '/subscriptionGroups?fields%5BsubscriptionGroups%5D=referenceName'
+            );
+            console.log('SUBSCRIPTION_GROUPS=' + groups.length);
+            const subs = [];
+            for (const g of groups) {
+              const list = await getAll(
+                token,
+                '/v1/subscriptionGroups/' + g.id +
+                '/subscriptions?fields%5Bsubscriptions%5D=productId,state,subscriptionPeriod'
+              );
+              subs.push(...list);
+            }
+            for (const s of subs.sort((a,b) => String(a.attributes?.productId).localeCompare(String(b.attributes?.productId)))) {
+              console.log('SUBSCRIPTION=' + String(s.attributes?.productId || '') + ':' + String(s.attributes?.state || ''));
+            }
+
+            // Assertions for fields we are fixing now.
+            const appCheck = await jsonRequest(
+              token, 'GET',
+              '/v1/apps/' + appId +
+              '?fields%5Bapps%5D=contentRightsDeclaration,availableInNewTerritories,primaryLocale',
+              null, [200]
+            );
+            const aa = appCheck.data?.data?.attributes || {};
+            if (aa.contentRightsDeclaration !== 'DOES_NOT_USE_THIRD_PARTY_CONTENT') {
+              throw new Error('Content rights did not persist');
+            }
+            if (aa.availableInNewTerritories !== true) {
+              throw new Error('availableInNewTerritories did not persist');
+            }
+            console.log('DIRECT_ASC_FIX_VERIFIED=yes');
+          })().catch(err => {
+            console.error('ASC_DIRECT_FIX_FAILED=' + err.message);
+            process.exit(1);
+          });
+          NODE
+          node /tmp/asc-direct-fix.cjs
