@@ -1,0 +1,63 @@
+name: Event Booth ASC internal probe
+
+on:
+  push:
+    branches: [eventbooth-asc-internal]
+    paths:
+      - ".github/workflows/eventbooth-asc-internal.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      OX_EAS_PROJECT_ID: "a8ec463b-a530-41c9-af1f-c5499359f881"
+      OX_PROJECT_SLUG: "ox-invoice"
+      OX_BUNDLE_ID: "com.operatorx.oxinvoice"
+      EVENTBOOTH_BUNDLE_ID: "com.operatorx.eventbooth"
+    steps:
+      - uses: actions/setup-node@v4
+        with: { node-version: "24" }
+      - name: Install EAS CLI library
+        run: |
+          set -euo pipefail
+          test -n "${EXPO_TOKEN:-}" || { echo "EXPO_TOKEN missing"; exit 20; }
+          mkdir -p /tmp/easlib
+          npm install --prefix /tmp/easlib eas-cli@latest --ignore-scripts --no-audit --no-fund >/dev/null
+      - name: Resolve ASC key and probe Event Booth
+        run: |
+          set -euo pipefail
+          cat > /tmp/probe.cjs <<'NODE'
+          const crypto = require('crypto');
+          const EAS_ROOT='/tmp/easlib/node_modules/eas-cli/build';
+          const { createGraphqlClient } = require(EAS_ROOT + '/commandUtils/context/contextUtils/createGraphqlClient.js');
+          const { getOwnerAccountForProjectIdAsync } = require(EAS_ROOT + '/project/projectUtils.js');
+          const { getAscApiKeyForAppSubmissionsAsync } = require(EAS_ROOT + '/credentials/ios/api/GraphqlClient.js');
+          const { AppStoreConnectApiKeyQuery } = require(EAS_ROOT + '/graphql/queries/AppStoreConnectApiKeyQuery.js');
+          function b64url(x){return Buffer.from(x).toString('base64url')}
+          function jwtFor(k){const now=Math.floor(Date.now()/1000);const h={alg:'ES256',kid:k.keyIdentifier,typ:'JWT'};const p={iss:k.issuerIdentifier,iat:now-5,exp:now+900,aud:'appstoreconnect-v1'};const si=b64url(JSON.stringify(h))+'.'+b64url(JSON.stringify(p));const sig=crypto.sign('sha256',Buffer.from(si),{key:k.keyP8,dsaEncoding:'ieee-p1363'});return si+'.'+sig.toString('base64url')}
+          async function get(token,path){const r=await fetch('https://api.appstoreconnect.apple.com'+path,{headers:{Authorization:'Bearer '+token}});const t=await r.text();let j={};try{j=t?JSON.parse(t):{}}catch{};console.log('GET',path,'HTTP='+r.status);if(!r.ok){console.log(JSON.stringify(j));process.exit(2)}return j}
+          (async()=>{
+            const gql=createGraphqlClient({accessToken:process.env.EXPO_TOKEN,sessionSecret:null});
+            const account=await getOwnerAccountForProjectIdAsync(gql,process.env.OX_EAS_PROJECT_ID);
+            const frag=await getAscApiKeyForAppSubmissionsAsync(gql,{account,projectName:process.env.OX_PROJECT_SLUG,bundleIdentifier:process.env.OX_BUNDLE_ID});
+            if(!frag) throw new Error('No ASC key assigned to OX Invoice');
+            const key=await AppStoreConnectApiKeyQuery.getByIdAsync(gql,frag.id);
+            if(!key?.keyP8||!key?.keyIdentifier||!key?.issuerIdentifier) throw new Error('Incomplete ASC key');
+            console.log('ASC_KEY_RESOLVED=yes');
+            const token=jwtFor(key);
+            const bid=encodeURIComponent(process.env.EVENTBOOTH_BUNDLE_ID);
+            const apps=await get(token,'/v1/apps?filter%5BbundleId%5D='+bid+'&fields%5Bapps%5D=name,bundleId,sku,primaryLocale');
+            console.log('APP_FOUND='+(apps.data?.length?'yes':'no'));
+            if(apps.data?.length){const a=apps.data[0];console.log('APP_ID='+a.id);console.log('APP_NAME='+a.attributes?.name);console.log('PRIMARY_LOCALE='+a.attributes?.primaryLocale)}
+            const bundles=await get(token,'/v1/bundleIds?filter%5Bidentifier%5D='+bid+'&fields%5BbundleIds%5D=identifier,name,platform');
+            console.log('BUNDLE_ID_REGISTERED='+(bundles.data?.length?'yes':'no'));
+            if(bundles.data?.length) console.log('BUNDLE_RESOURCE_ID='+bundles.data[0].id);
+            console.log('PROBE=PASS');
+          })().catch(e=>{console.error('PROBE=FAIL');console.error(e.message);process.exit(1)})
+          NODE
+          node /tmp/probe.cjs
