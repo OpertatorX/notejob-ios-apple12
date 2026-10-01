@@ -1,0 +1,25 @@
+name: Event Booth Apple auth presence
+on:
+  push:
+    branches: [eventbooth-asc-internal]
+    paths:
+      - ".github/workflows/eventbooth-apple-auth-presence.yml"
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_APPLE_ID: ${{ secrets.EXPO_APPLE_ID }}
+      EXPO_APPLE_PASSWORD: ${{ secrets.EXPO_APPLE_PASSWORD }}
+      FASTLANE_SESSION: ${{ secrets.FASTLANE_SESSION }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      EXPO_APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.EXPO_APPLE_APP_SPECIFIC_PASSWORD }}
+    steps:
+      - shell: bash
+        run: |
+          for n in EXPO_APPLE_ID EXPO_APPLE_PASSWORD FASTLANE_SESSION APPLE_ID APPLE_PASSWORD APPLE_APP_SPECIFIC_PASSWORD EXPO_APPLE_APP_SPECIFIC_PASSWORD; do
+            if [[ -n "${!n:-}" ]]; then echo "$n=yes"; else echo "$n=no"; fi
+          done
