@@ -147,7 +147,7 @@ jobs:
                 console.log('DELETED '+locale+' '+s.id);
               }
 
-              const dir=path.join('screenshots',locale);
+              const dir=path.join('shots',locale);
               for(let i=1;i<=5;i++){
                 const file=path.join(dir,i+'.jpg');
                 const bytes=fs.readFileSync(file);
