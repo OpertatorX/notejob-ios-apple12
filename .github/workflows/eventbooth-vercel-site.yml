@@ -1,0 +1,46 @@
+name: Event Booth Vercel Site
+on:
+  push:
+    branches: [eventbooth-release-internal]
+    paths:
+      - "eventbooth-site/**"
+      - ".github/workflows/eventbooth-vercel-site.yml"
+permissions:
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy isolated Event Booth site
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VERCEL_TOKEN"
+          test -n "$VERCEL_ORG_ID"
+          API="https://api.vercel.com/v10/projects?teamId=$VERCEL_ORG_ID"
+          CODE=$(curl -sS -o /tmp/project.json -w "%{http_code}" -X POST "$API" \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data '{"name":"operatorx-eventbooth"}')
+          if [ "$CODE" != "200" ] && [ "$CODE" != "201" ] && [ "$CODE" != "409" ]; then
+            cat /tmp/project.json
+            exit 20
+          fi
+          curl -sS "https://api.vercel.com/v9/projects/operatorx-eventbooth?teamId=$VERCEL_ORG_ID" \
+            -H "Authorization: Bearer $VERCEL_TOKEN" > /tmp/project-get.json
+          PROJECT_ID=$(python3 -c 'import json; print(json.load(open("/tmp/project-get.json"))["id"])')
+          mkdir -p eventbooth-site/.vercel
+          printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$PROJECT_ID" > eventbooth-site/.vercel/project.json
+          npm install --global vercel@latest
+          cd eventbooth-site
+          URL=$(vercel --prod --yes --token "$VERCEL_TOKEN" 2>&1 | tee /tmp/vercel.log | tail -n 1)
+          echo "DEPLOYMENT_OUTPUT=$URL"
+          curl -fsS https://operatorx-eventbooth.vercel.app/ >/dev/null
+          curl -fsS https://operatorx-eventbooth.vercel.app/privacy >/dev/null
+          curl -fsS https://operatorx-eventbooth.vercel.app/terms >/dev/null
+          curl -fsS https://operatorx-eventbooth.vercel.app/support >/dev/null
+          echo "EVENTBOOTH_SITE=https://operatorx-eventbooth.vercel.app"
