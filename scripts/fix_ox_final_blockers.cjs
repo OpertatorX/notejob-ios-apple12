@@ -22,7 +22,8 @@ function jwtFor(k){
 async function req(tok,method,url,body=null,ok=[200]){
   const full=url.startsWith('http')?url:'https://api.appstoreconnect.apple.com'+url;
   for(let attempt=1;attempt<=5;attempt++){
-    const headers=url.startsWith('http')?{}:{Authorization:'Bearer '+tok,'Content-Type':'application/json'};
+    const isAppleApi=full.startsWith('https://api.appstoreconnect.apple.com');
+    const headers=isAppleApi?{Authorization:'Bearer '+tok,'Content-Type':'application/json'}:{};
     const r=await fetch(full,{method,headers,body:body?(Buffer.isBuffer(body)?body:JSON.stringify(body)):undefined});
     const txt=await r.text(); let j=null; try{j=txt?JSON.parse(txt):null}catch{j=txt}
     if(ok.includes(r.status)) return {status:r.status,data:j,headers:r.headers};
@@ -74,6 +75,11 @@ async function uploadSet(tok,loc,locale,type,dir){
   }
 
   const old=await all(tok,'/v1/appScreenshotSets/'+set.id+'/appScreenshots?fields%5BappScreenshots%5D=fileName,assetDeliveryState');
+  const oldStates=old.map(s=>s.attributes?.assetDeliveryState?.state||'UNKNOWN');
+  if(old.length===5 && oldStates.every(s=>String(s).toUpperCase()==='COMPLETE')){
+    console.log('SET_ALREADY_COMPLETE='+locale+'|'+type+'|count=5');
+    return;
+  }
   for(const s of old) await req(tok,'DELETE','/v1/appScreenshots/'+s.id,null,[204]);
 
   for(let i=1;i<=5;i++){
