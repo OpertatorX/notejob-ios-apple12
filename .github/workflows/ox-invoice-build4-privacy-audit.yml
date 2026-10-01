@@ -21,8 +21,21 @@ jobs:
         with:
           node-version: "24"
 
-      - name: Clone OX Invoice source
-        run: git clone --depth 1 https://github.com/OpertatorX/ox-invoice-ios.git ox-invoice
+      - name: Prepare OX Invoice EAS project context
+        shell: bash
+        run: |
+          mkdir -p ox-invoice
+          cat > ox-invoice/app.json <<'JSON'
+          {
+            "expo": {
+              "name": "OX Invoice",
+              "slug": "ox-invoice",
+              "owner": "operatorx",
+              "ios": {"bundleIdentifier": "com.operatorx.oxinvoice"},
+              "extra": {"eas": {"projectId": "a8ec463b-a530-41c9-af1f-c5499359f881"}}
+            }
+          }
+          JSON
 
       - name: Install EAS CLI
         run: npm install -g eas-cli@latest --ignore-scripts --no-audit --no-fund
