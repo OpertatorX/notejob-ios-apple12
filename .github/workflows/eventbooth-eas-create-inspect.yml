@@ -1,0 +1,26 @@
+name: Inspect EAS App Store record creation
+on:
+  push:
+    branches: [eventbooth-asc-internal]
+    paths:
+      - ".github/workflows/eventbooth-eas-create-inspect.yml"
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-node@v4
+        with: { node-version: "24" }
+      - run: |
+          set -euo pipefail
+          mkdir -p /tmp/easlib
+          npm install --prefix /tmp/easlib eas-cli@latest --ignore-scripts --no-audit --no-fund >/dev/null
+      - run: |
+          set -euo pipefail
+          R=/tmp/easlib/node_modules/eas-cli/build
+          echo "===== ensureAppExists.js ====="
+          sed -n '1,320p' "$R/credentials/ios/appstore/ensureAppExists.js"
+          echo "===== submit ios refs ====="
+          grep -RniE 'ensureAppExists|ascAppId|appStoreConnectApp' "$R/submit" "$R/commands/submit" | sed -n '1,320p'
