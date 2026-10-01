@@ -1,0 +1,147 @@
+name: OX Invoice — build 4 privacy audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ox-invoice-build4-privacy-audit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Clone OX Invoice source
+        run: git clone --depth 1 https://github.com/OpertatorX/ox-invoice-ios.git ox-invoice
+
+      - name: Install EAS CLI
+        run: npm install -g eas-cli@latest --ignore-scripts --no-audit --no-fund
+
+      - name: Locate and download OX Invoice build 4 IPA
+        working-directory: ox-invoice
+        shell: bash
+        run: |
+          set -euo pipefail
+          eas build:list --platform ios --status finished --limit 20 --json --non-interactive > /tmp/builds.json
+          python3 - <<'PY'
+          import json, sys, urllib.request
+          builds=json.load(open('/tmp/builds.json'))
+          def bn(b):
+              for k in ('appBuildVersion','buildNumber'):
+                  if b.get(k) is not None: return str(b.get(k))
+              ios=b.get('ios') or {}
+              for k in ('buildNumber','appBuildVersion'):
+                  if ios.get(k) is not None: return str(ios.get(k))
+              return ''
+          matches=[b for b in builds if bn(b)=='4']
+          if not matches:
+              print(json.dumps(builds[:3], indent=2)[:5000])
+              raise SystemExit('Build 4 not found')
+          b=matches[0]
+          print('BUILD_ID='+str(b.get('id')))
+          print('BUILD_NUMBER='+bn(b))
+          print('APP_VERSION='+str(b.get('appVersion')))
+          art=b.get('artifacts') or {}
+          url=art.get('buildUrl') or art.get('applicationArchiveUrl')
+          if not url:
+              print(json.dumps(b, indent=2)[:5000])
+              raise SystemExit('IPA URL missing')
+          urllib.request.urlretrieve(url, '/tmp/oxinvoice-build4.ipa')
+          print('IPA_BYTES='+str(__import__('os').path.getsize('/tmp/oxinvoice-build4.ipa')))
+          PY
+
+      - name: Audit exact IPA contents and privacy manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/ipa && mkdir -p /tmp/ipa
+          unzip -q /tmp/oxinvoice-build4.ipa -d /tmp/ipa
+          python3 - <<'PY'
+          import os, glob, plistlib, json, re
+          apps=glob.glob('/tmp/ipa/Payload/*.app')
+          if len(apps)!=1: raise SystemExit(f'Expected 1 app, got {apps}')
+          app=apps[0]
+          print('APP_BUNDLE='+app)
+
+          info=os.path.join(app,'Info.plist')
+          with open(info,'rb') as f: p=plistlib.load(f)
+          keys=['CFBundleIdentifier','CFBundleShortVersionString','CFBundleVersion',
+                'NSPhotoLibraryUsageDescription','NSCameraUsageDescription',
+                'NSMicrophoneUsageDescription','NSUserTrackingUsageDescription',
+                'NSLocationWhenInUseUsageDescription','NSContactsUsageDescription']
+          for k in keys:
+              print(f'INFO_{k}='+str(p.get(k,'MISSING')))
+
+          fw=os.path.join(app,'Frameworks')
+          print('FRAMEWORKS_BEGIN')
+          if os.path.isdir(fw):
+              for x in sorted(os.listdir(fw)): print(x)
+          print('FRAMEWORKS_END')
+
+          # all privacy manifests
+          manifests=[]
+          for root,dirs,files in os.walk(app):
+              if 'PrivacyInfo.xcprivacy' in files:
+                  manifests.append(os.path.join(root,'PrivacyInfo.xcprivacy'))
+          print('PRIVACY_MANIFEST_COUNT='+str(len(manifests)))
+          agg_collected=[]
+          tracking=False
+          domains=set()
+          for m in sorted(manifests):
+              rel=os.path.relpath(m,app)
+              try:
+                  with open(m,'rb') as f: q=plistlib.load(f)
+              except Exception as e:
+                  print('MANIFEST_PARSE_ERROR='+rel+'|'+str(e)); continue
+              print('MANIFEST='+rel)
+              print('  TRACKING='+str(q.get('NSPrivacyTracking',False)))
+              if q.get('NSPrivacyTracking'): tracking=True
+              for d in q.get('NSPrivacyTrackingDomains',[]) or []: domains.add(d)
+              for row in q.get('NSPrivacyCollectedDataTypes',[]) or []:
+                  agg_collected.append((rel,row))
+                  print('  COLLECTED='+json.dumps(row,sort_keys=True))
+              for row in q.get('NSPrivacyAccessedAPITypes',[]) or []:
+                  print('  ACCESSED_API='+json.dumps(row,sort_keys=True))
+          print('AGG_TRACKING='+str(tracking))
+          print('AGG_TRACKING_DOMAINS='+','.join(sorted(domains)) if domains else 'AGG_TRACKING_DOMAINS=NONE')
+          print('AGG_COLLECTED_COUNT='+str(len(agg_collected)))
+
+          # suspicious SDK/framework names and endpoint strings
+          needles=['GoogleMobileAds','Firebase','Sentry','Mixpanel','Amplitude','AppsFlyer',
+                   'Adjust','Facebook','Meta','Segment','RevenueCat','AdSupport',
+                   'AppTrackingTransparency']
+          found=[]
+          for root,dirs,files in os.walk(app):
+              for name in files:
+                  path=os.path.join(root,name)
+                  if any(n.lower() in path.lower() for n in needles):
+                      found.append(os.path.relpath(path,app))
+          print('SUSPICIOUS_PATHS='+json.dumps(found[:200]))
+
+          # JS bundle strings for network destinations
+          urls=set()
+          for root,dirs,files in os.walk(app):
+              for name in files:
+                  if name.endswith(('.jsbundle','.bundle')) or name=='main.jsbundle':
+                      path=os.path.join(root,name)
+                      try: data=open(path,'rb').read()
+                      except: continue
+                      for m in re.findall(rb'https?://[A-Za-z0-9._~:/?#\[\]@!$&\'()*+,;=%-]+',data):
+                          try: urls.add(m.decode('utf-8','ignore')[:300])
+                          except: pass
+          print('BUNDLE_URLS_BEGIN')
+          for u in sorted(urls):
+              if any(s in u.lower() for s in ['openiap','operatorx','apple','expo','reactnative']): print(u)
+          print('BUNDLE_URLS_END')
+          print('BUILD4_PRIVACY_AUDIT=PASS')
+          PY
