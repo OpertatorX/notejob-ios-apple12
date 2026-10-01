@@ -1,0 +1,52 @@
+name: Inspect EAS distribution certificate fields
+
+on:
+  push:
+    branches: [eventbooth-asc-internal]
+    paths:
+      - ".github/workflows/eventbooth-eas-cert-fields.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      OX_EAS_PROJECT_ID: "a8ec463b-a530-41c9-af1f-c5499359f881"
+    steps:
+      - uses: actions/setup-node@v4
+        with: { node-version: "24" }
+      - run: |
+          set -euo pipefail
+          mkdir -p /tmp/easlib
+          npm install --prefix /tmp/easlib eas-cli@latest --ignore-scripts --no-audit --no-fund >/dev/null
+      - run: |
+          set -euo pipefail
+          cat >/tmp/inspect.cjs <<'NODE'
+          const E='/tmp/easlib/node_modules/eas-cli/build';
+          const { createGraphqlClient }=require(E+'/commandUtils/context/contextUtils/createGraphqlClient.js');
+          const { getOwnerAccountForProjectIdAsync }=require(E+'/project/projectUtils.js');
+          const { getDistributionCertificatesForAccountAsync }=require(E+'/credentials/ios/api/GraphqlClient.js');
+          (async()=>{
+            const gql=createGraphqlClient({accessToken:process.env.EXPO_TOKEN,sessionSecret:null});
+            const account=await getOwnerAccountForProjectIdAsync(gql,process.env.OX_EAS_PROJECT_ID);
+            console.log('ACCOUNT_NAME='+account.name);
+            const certs=await getDistributionCertificatesForAccountAsync(gql,account);
+            console.log('CERT_COUNT='+certs.length);
+            certs.forEach((c,i)=>{
+              console.log('CERT_'+i+'_KEYS='+Object.keys(c).sort().join(','));
+              for(const k of ['id','serialNumber','developerPortalIdentifier','certificateP12','certificatePassword','teamId','appleTeamIdentifier']){
+                if(k in c){
+                  const v=c[k];
+                  if(/certificateP12|certificatePassword/i.test(k)) console.log('CERT_'+i+'_'+k+'_PRESENT='+(v? 'yes':'no')+' LEN='+(v?String(v).length:0));
+                  else console.log('CERT_'+i+'_'+k+'='+String(v??''));
+                }
+              }
+              if(c.appleTeam) console.log('CERT_'+i+'_APPLE_TEAM_KEYS='+Object.keys(c.appleTeam).sort().join(','));
+            });
+          })().catch(e=>{console.error(e.stack||e.message);process.exit(1)})
+          NODE
+          node /tmp/inspect.cjs
