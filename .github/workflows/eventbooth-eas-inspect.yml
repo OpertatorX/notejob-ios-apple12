@@ -1,0 +1,33 @@
+name: Inspect EAS iOS credential API
+
+on:
+  push:
+    branches: [eventbooth-asc-internal]
+    paths:
+      - ".github/workflows/eventbooth-eas-inspect.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - uses: actions/setup-node@v4
+        with: { node-version: "24" }
+      - run: |
+          set -euo pipefail
+          mkdir -p /tmp/easlib
+          npm install --prefix /tmp/easlib eas-cli@latest --ignore-scripts --no-audit --no-fund >/dev/null
+      - run: |
+          set -euo pipefail
+          ROOT=/tmp/easlib/node_modules/eas-cli/build
+          echo "== ios api files =="
+          find "$ROOT/credentials/ios" -maxdepth 4 -type f | sort | sed -n '1,240p'
+          echo "== graphql query files =="
+          find "$ROOT/graphql" -maxdepth 3 -type f | sort | grep -Ei 'credential|certificate|provision|apple|appstore|ios' | sed -n '1,240p'
+          echo "== exported names =="
+          grep -RhoE 'exports\.[A-Za-z0-9_]+' "$ROOT/credentials/ios" "$ROOT/graphql" | sort -u | grep -Ei 'certificate|provision|credential|ios|appstore' | sed -n '1,300p'
