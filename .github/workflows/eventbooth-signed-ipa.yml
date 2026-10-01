@@ -1,0 +1,220 @@
+name: Event Booth signed IPA internal
+
+on:
+  push:
+    branches: [eventbooth-asc-internal]
+    paths:
+      - ".github/workflows/eventbooth-signed-ipa.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  ipa:
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      OX_EAS_PROJECT_ID: "a8ec463b-a530-41c9-af1f-c5499359f881"
+      OX_PROJECT_SLUG: "ox-invoice"
+      OX_BUNDLE_ID: "com.operatorx.oxinvoice"
+      EVENTBOOTH_BUNDLE_ID: "com.operatorx.eventbooth"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "24" }
+
+      - name: Reconstruct Event Booth source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/eventbooth-src
+          mkdir -p /tmp/eventbooth-src
+          cat internal/eventbooth/chunks/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/eventbooth-src.tar.gz
+          echo "8a8d2094865775cdd5f1f6b302d527fbd2fda02008bed437706451fb83ee9cd2  /tmp/eventbooth-src.tar.gz" | shasum -a 256 -c -
+          tar -xzf /tmp/eventbooth-src.tar.gz -C /tmp/eventbooth-src
+          cp internal/eventbooth/overrides/CameraController.swift /tmp/eventbooth-src/EventBooth/Services/CameraController.swift
+
+      - name: Install tooling
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          mkdir -p /tmp/easlib
+          npm install --prefix /tmp/easlib eas-cli@latest --ignore-scripts --no-audit --no-fund >/dev/null
+
+      - name: Resolve distribution certificate and create App Store profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >/tmp/signing.cjs <<'NODE'
+          const fs=require('fs'), crypto=require('crypto');
+          const E='/tmp/easlib/node_modules/eas-cli/build';
+          const { createGraphqlClient }=require(E+'/commandUtils/context/contextUtils/createGraphqlClient.js');
+          const { getOwnerAccountForProjectIdAsync }=require(E+'/project/projectUtils.js');
+          const {
+            getAscApiKeyForAppSubmissionsAsync,
+            getDistributionCertificatesForAccountAsync
+          }=require(E+'/credentials/ios/api/GraphqlClient.js');
+          const { AppStoreConnectApiKeyQuery }=require(E+'/graphql/queries/AppStoreConnectApiKeyQuery.js');
+
+          const b64url=x=>Buffer.from(x).toString('base64url');
+          function jwtFor(k){
+            const n=Math.floor(Date.now()/1000),h={alg:'ES256',kid:k.keyIdentifier,typ:'JWT'},
+              p={iss:k.issuerIdentifier,iat:n-5,exp:n+900,aud:'appstoreconnect-v1'};
+            const si=b64url(JSON.stringify(h))+'.'+b64url(JSON.stringify(p));
+            return si+'.'+crypto.sign('sha256',Buffer.from(si),{key:k.keyP8,dsaEncoding:'ieee-p1363'}).toString('base64url');
+          }
+          async function request(token,method,path,body=null,ok=[200]){
+            const r=await fetch('https://api.appstoreconnect.apple.com'+path,{
+              method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+              body:body?JSON.stringify(body):undefined
+            });
+            const t=await r.text(); let j={}; try{j=t?JSON.parse(t):{}}catch{}
+            if(!ok.includes(r.status)){
+              const safe=j?.errors?.map(e=>({status:e.status,code:e.code,title:e.title,detail:e.detail}))??j;
+              throw new Error(method+' '+path+' -> '+r.status+' '+JSON.stringify(safe));
+            }
+            return {status:r.status,data:j};
+          }
+
+          (async()=>{
+            const gql=createGraphqlClient({accessToken:process.env.EXPO_TOKEN,sessionSecret:null});
+            const account=await getOwnerAccountForProjectIdAsync(gql,process.env.OX_EAS_PROJECT_ID);
+
+            const frag=await getAscApiKeyForAppSubmissionsAsync(gql,{
+              account,projectName:process.env.OX_PROJECT_SLUG,bundleIdentifier:process.env.OX_BUNDLE_ID
+            });
+            if(!frag) throw new Error('ASC key missing');
+            const asc=await AppStoreConnectApiKeyQuery.getByIdAsync(gql,frag.id);
+            if(!asc?.keyP8||!asc?.keyIdentifier||!asc?.issuerIdentifier) throw new Error('ASC key incomplete');
+            fs.writeFileSync('/tmp/AuthKey.p8',asc.keyP8,{mode:0o600});
+            const token=jwtFor(asc);
+
+            const distCerts=await getDistributionCertificatesForAccountAsync(gql,account);
+            const cert=distCerts.find(c=>c.certificateP12&&c.certificatePassword);
+            if(!cert) throw new Error('No EAS distribution certificate with private key');
+            fs.writeFileSync('/tmp/EventBoothDist.p12',Buffer.from(cert.certificateP12,'base64'),{mode:0o600});
+            fs.writeFileSync('/tmp/EventBoothDist.pass',cert.certificatePassword,{mode:0o600});
+
+            const bid=encodeURIComponent(process.env.EVENTBOOTH_BUNDLE_ID);
+            const br=await request(token,'GET','/v1/bundleIds?filter%5Bidentifier%5D='+bid+'&fields%5BbundleIds%5D=identifier,name,platform,seedId');
+            if(!br.data.data?.length) throw new Error('Bundle ID missing');
+            const bundle=br.data.data[0], team=bundle.attributes?.seedId;
+            if(!team) throw new Error('Apple Team ID missing');
+
+            const cr=await request(token,'GET','/v1/certificates?limit=200&fields%5Bcertificates%5D=name,certificateType,displayName,serialNumber,platform,expirationDate');
+            const wanted=String(cert.serialNumber||'').replace(/^0+/,'').toUpperCase();
+            const appleCert=(cr.data.data||[]).find(x=>String(x.attributes?.serialNumber||'').replace(/^0+/,'').toUpperCase()===wanted);
+            if(!appleCert) throw new Error('Matching Apple Distribution certificate not found on Developer Portal');
+
+            let pr=await request(token,'GET','/v1/bundleIds/'+bundle.id+'/profiles?limit=200&fields%5Bprofiles%5D=name,platform,profileType,profileState,profileContent,uuid,createdDate,expirationDate');
+            let profile=(pr.data.data||[]).find(x=>x.attributes?.profileType==='IOS_APP_STORE'&&x.attributes?.profileState==='ACTIVE');
+
+            if(!profile){
+              const name='Event Booth AppStore '+new Date().toISOString().replace(/[:.]/g,'-');
+              const body={data:{
+                type:'profiles',
+                attributes:{name,profileType:'IOS_APP_STORE'},
+                relationships:{
+                  bundleId:{data:{type:'bundleIds',id:bundle.id}},
+                  certificates:{data:[{type:'certificates',id:appleCert.id}]}
+                }
+              }};
+              const created=await request(token,'POST','/v1/profiles',body,[201]);
+              profile=created.data.data;
+              console.log('PROFILE_CREATED=yes');
+            } else {
+              console.log('PROFILE_CREATED=no');
+            }
+
+            if(!profile.attributes?.profileContent||!profile.attributes?.uuid) throw new Error('Provisioning profile content/uuid missing');
+            fs.writeFileSync('/tmp/EventBooth.mobileprovision',Buffer.from(profile.attributes.profileContent,'base64'),{mode:0o600});
+            fs.appendFileSync(process.env.GITHUB_ENV,
+              'APPLE_TEAM_ID='+team+'\nASC_KEY_ID='+asc.keyIdentifier+'\nASC_ISSUER_ID='+asc.issuerIdentifier+
+              '\nEVENTBOOTH_PROFILE_NAME='+profile.attributes.name+'\nEVENTBOOTH_PROFILE_UUID='+profile.attributes.uuid+'\n');
+            console.log('ASC_KEY_RESOLVED=yes');
+            console.log('DIST_CERT_RESOLVED=yes');
+            console.log('APPSTORE_PROFILE_RESOLVED=yes');
+            console.log('APPLE_TEAM_ID_RESOLVED=yes');
+          })().catch(e=>{console.error(e.stack||e.message);process.exit(1)})
+          NODE
+          node /tmp/signing.cjs
+
+      - name: Install signing assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYCHAIN=/tmp/eventbooth-build.keychain-db
+          PASS="$(openssl rand -hex 16)"
+          security create-keychain -p "$PASS" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$PASS" "$KEYCHAIN"
+          P12_PASS="$(cat /tmp/EventBoothDist.pass)"
+          security import /tmp/EventBoothDist.p12 -k "$KEYCHAIN" -P "$P12_PASS" -A -t cert -f pkcs12
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$PASS" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp /tmp/EventBooth.mobileprovision "$HOME/Library/MobileDevice/Provisioning Profiles/$EVENTBOOTH_PROFILE_UUID.mobileprovision"
+          security find-identity -v -p codesigning "$KEYCHAIN"
+
+      - name: Generate Xcode project
+        working-directory: /tmp/eventbooth-src
+        run: xcodegen generate
+
+      - name: Archive with App Store profile
+        working-directory: /tmp/eventbooth-src
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          xcodebuild \
+            -project EventBooth.xcodeproj \
+            -scheme EventBooth \
+            -configuration Release \
+            -archivePath artifacts/EventBooth.xcarchive \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="$EVENTBOOTH_PROFILE_NAME" \
+            archive | tee /tmp/eventbooth-archive.log
+
+      - name: Export IPA
+        working-directory: /tmp/eventbooth-src
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > artifacts/ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+          <key>method</key><string>app-store-connect</string>
+          <key>signingStyle</key><string>manual</string>
+          <key>teamID</key><string>$APPLE_TEAM_ID</string>
+          <key>signingCertificate</key><string>Apple Distribution</string>
+          <key>provisioningProfiles</key><dict>
+            <key>com.operatorx.eventbooth</key><string>$EVENTBOOTH_PROFILE_NAME</string>
+          </dict>
+          </dict></plist>
+          PLIST
+          set -o pipefail
+          xcodebuild -exportArchive \
+            -archivePath artifacts/EventBooth.xcarchive \
+            -exportPath artifacts/export \
+            -exportOptionsPlist artifacts/ExportOptions.plist | tee /tmp/eventbooth-export.log
+          IPA="$(find artifacts/export -name '*.ipa' -print -quit)"
+          test -s "$IPA"
+          shasum -a 256 "$IPA" | tee artifacts/IPA_SHA256.txt
+          echo "IPA_READY=yes"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: EventBooth-IPA-build2
+          path: |
+            /tmp/eventbooth-src/artifacts/export/*.ipa
+            /tmp/eventbooth-src/artifacts/IPA_SHA256.txt
+            /tmp/eventbooth-archive.log
+            /tmp/eventbooth-export.log
+          if-no-files-found: warn
+          retention-days: 30
