@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/ox-invoice-upload-screenshots.yml"
+      - "scripts/fix_ox_final_blockers.cjs"
+      - "scripts/render_ox_appstore_ipad_screens.py"
 
 permissions:
   contents: read
