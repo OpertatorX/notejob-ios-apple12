@@ -1,0 +1,29 @@
+name: Inspect EAS credential query signatures
+
+on:
+  push:
+    branches: [eventbooth-asc-internal]
+    paths:
+      - ".github/workflows/eventbooth-eas-signatures.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-node@v4
+        with: { node-version: "24" }
+      - run: |
+          set -euo pipefail
+          mkdir -p /tmp/easlib
+          npm install --prefix /tmp/easlib eas-cli@latest --ignore-scripts --no-audit --no-fund >/dev/null
+      - run: |
+          set -euo pipefail
+          R=/tmp/easlib/node_modules/eas-cli/build
+          for f in             credentials/ios/api/GraphqlClient.d.ts             credentials/ios/api/graphql/queries/AppleDistributionCertificateQuery.d.ts             credentials/ios/api/graphql/queries/AppleDistributionCertificateQuery.js             graphql/types/credentials/AppleDistributionCertificate.d.ts             credentials/ios/api/graphql/queries/IosAppCredentialsQuery.d.ts             credentials/ios/api/graphql/queries/IosAppBuildCredentialsQuery.d.ts             credentials/ios/api/graphql/queries/AppleProvisioningProfileQuery.d.ts; do
+            echo "===== $f ====="
+            sed -n '1,260p' "$R/$f"
+          done
