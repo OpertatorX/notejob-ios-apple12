@@ -1,0 +1,28 @@
+name: Event Booth Apple Login Probe
+on:
+  push:
+    branches: [eventbooth-release-internal]
+    paths:
+      - ".github/workflows/eventbooth-apple-login-probe.yml"
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      FASTLANE_USER: ${{ secrets.FASTLANE_USER }}
+      FASTLANE_PASSWORD: ${{ secrets.FASTLANE_PASSWORD }}
+      FASTLANE_SESSION: ${{ secrets.FASTLANE_SESSION }}
+      EXPO_APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.EXPO_APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD: ${{ secrets.FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD }}
+    steps:
+      - shell: bash
+        run: |
+          set -euo pipefail
+          for v in EXPO_TOKEN APPLE_ID APPLE_PASSWORD FASTLANE_USER FASTLANE_PASSWORD FASTLANE_SESSION EXPO_APPLE_APP_SPECIFIC_PASSWORD APPLE_APP_SPECIFIC_PASSWORD FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD; do
+            if [ -n "${!v:-}" ]; then echo "$v=PRESENT"; else echo "$v=MISSING"; fi
+          done
