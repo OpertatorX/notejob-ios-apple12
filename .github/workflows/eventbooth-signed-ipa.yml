@@ -1,4 +1,4 @@
-name: Event Booth RC5 build 6 signed IPA
+name: Event Booth RC6 build 7 signed IPA
 
 on:
   push:
@@ -59,10 +59,10 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           p=Path('/tmp/eventbooth-src/project.yml')
-          s=p.read_text().replace('CURRENT_PROJECT_VERSION: 5','CURRENT_PROJECT_VERSION: 6')
+          s=p.read_text().replace('CURRENT_PROJECT_VERSION: 5','CURRENT_PROJECT_VERSION: 7')
           p.write_text(s)
           PY
-          grep -q 'CURRENT_PROJECT_VERSION: 6' /tmp/eventbooth-src/project.yml
+          grep -q 'CURRENT_PROJECT_VERSION: 7' /tmp/eventbooth-src/project.yml
           test "$(grep -c ' = ' /tmp/eventbooth-src/EventBooth/Resources/fr.lproj/Localizable.strings)" -eq 157
           test "$(grep -c ' = ' /tmp/eventbooth-src/EventBooth/Resources/en.lproj/Localizable.strings)" -eq 157
           cd "$GITHUB_WORKSPACE"
@@ -112,6 +112,10 @@ jobs:
           JSON
           /usr/libexec/PlistBuddy -c "Delete :CFBundleIconName" /tmp/eventbooth-src/EventBooth/Info.plist 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string AppIcon" /tmp/eventbooth-src/EventBooth/Info.plist
+          # Event Booth uses a fixed ivory/light organizer palette. Force light UI so
+          # iOS Dark Mode cannot turn default Form/navigation labels white on ivory.
+          /usr/libexec/PlistBuddy -c "Delete :UIUserInterfaceStyle" /tmp/eventbooth-src/EventBooth/Info.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :UIUserInterfaceStyle string Light" /tmp/eventbooth-src/EventBooth/Info.plist
 
           echo "=== audited RC4 project.yml ==="
           cat /tmp/eventbooth-src/project.yml
@@ -319,7 +323,8 @@ jobs:
           APP="$(find /tmp/eventbooth-ipa-check/Payload -maxdepth 1 -name '*.app' -type d -print -quit)"
           test -n "$APP"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist" | grep -qx "com.operatorx.eventbooth"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Info.plist" | grep -qx "6"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Info.plist" | grep -qx "7"
+          /usr/libexec/PlistBuddy -c "Print :UIUserInterfaceStyle" "$APP/Info.plist" | grep -qx "Light"
           /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Info.plist" | grep -qx "1.0.0"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIconName" "$APP/Info.plist" | grep -qx "AppIcon"
           /usr/libexec/PlistBuddy -c "Print :ITSAppUsesNonExemptEncryption" "$APP/Info.plist" | grep -qx "false"
@@ -345,7 +350,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: EventBooth-IPA-build6
+          name: EventBooth-IPA-build7
           path: |
             /tmp/eventbooth-src/artifacts/export/*.ipa
             /tmp/eventbooth-src/artifacts/IPA_SHA256.txt
