@@ -78,6 +78,7 @@ jobs:
           echo "BRANDMARK_MATCHES_ICON=yes"
           echo "BUILD_NUMBER=11"
           echo "EVENTBOOTH_FINAL_HOTFIX_VALIDATE=PASS"
+          echo "VALIDATION_REV=8"
       - uses: actions/upload-artifact@v4
         with:
           name: EventBooth-final-brand-audit
