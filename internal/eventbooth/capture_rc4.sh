@@ -27,15 +27,20 @@ cat internal/eventbooth/rc5.patch > /tmp/eb-rc5.patch
   cd "$ROOT"
   patch --batch -p1 < /tmp/eb-rc5.patch
 )
+cat internal/eventbooth/rc6.patch > /tmp/eb-rc6.patch
+(
+  cd "$ROOT"
+  patch --batch -p1 < /tmp/eb-rc6.patch
+)
 python3 - <<'PY'
 from pathlib import Path
 p=Path("/tmp/eventbooth-src/project.yml")
-x=p.read_text().replace("CURRENT_PROJECT_VERSION: 5","CURRENT_PROJECT_VERSION: 6")
+x=p.read_text().replace("CURRENT_PROJECT_VERSION: 5","CURRENT_PROJECT_VERSION: 8")
 p.write_text(x)
 PY
 
 curl -L --fail --retry 3 --silent --show-error \
-  'https://images.unsplash.com/photo-1755121718895-7be4fbf4475a?auto=format&fit=crop&fm=jpg&ixlib=rb-4.1.0&q=82&w=2400' \
+  'https://images.unsplash.com/photo-1503738692489-fff01e3e0f3e?auto=format&fit=crop&fm=jpg&ixlib=rb-4.1.0&q=82&w=2400' \
   -o "$ROOT/EventBooth/Resources/ScreenshotWedding.jpg"
 test -s "$ROOT/EventBooth/Resources/ScreenshotWedding.jpg"
 
@@ -141,4 +146,4 @@ xcrun simctl shutdown "$IPAD"
 COUNT="$(find "$OUT" -name '*.png' | wc -l | tr -d ' ')"
 test "$COUNT" -eq 12
 sips -g pixelWidth -g pixelHeight "$OUT"/*.png
-echo "RC5_REFERENCE_CAPTURE=PASS"
+echo "RC6_REFERENCE_CAPTURE=PASS"
