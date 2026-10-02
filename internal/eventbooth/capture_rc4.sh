@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT=/tmp/ebsrc
+ROOT=/tmp/eventbooth-src
 DD=/tmp/ebdd
 OUT=/tmp/ebshots
 rm -rf "$ROOT" "$DD" "$OUT"
@@ -30,7 +30,7 @@ test -s "$ROOT/EventBooth/Resources/ScreenshotWedding.jpg"
 
 python3 - <<'PY'
 from pathlib import Path
-p=Path("/tmp/ebsrc/EventBooth/App/EventBoothApp.swift")
+p=Path("/tmp/eventbooth-src/EventBooth/App/EventBoothApp.swift")
 s=p.read_text()
 old='''        .task {
           await purchases.loadProducts()
@@ -60,7 +60,7 @@ command -v xcodegen >/dev/null || brew install xcodegen
     build | tee "$OUT/build.log"
 )
 
-if grep -E '/tmp/ebsrc/EventBooth/.*: warning:' "$OUT/build.log"; then
+if grep -E '/tmp/eventbooth-src/EventBooth/.*: warning:' "$OUT/build.log"; then
   echo "SOURCE_WARNING_GATE=FAIL"
   exit 31
 fi
