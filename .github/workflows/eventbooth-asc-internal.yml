@@ -61,3 +61,5 @@ jobs:
           })().catch(e=>{console.error('PROBE=FAIL');console.error(e.message);process.exit(1)})
           NODE
           node /tmp/probe.cjs
+
+# rerun after first Event Booth EAS submission
