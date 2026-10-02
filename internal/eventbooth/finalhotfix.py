@@ -26,6 +26,23 @@ def decode_parts(pattern, destination):
     dest.write_bytes(data)
     print(f"FINAL_ASSET={destination}|{len(data)}")
 
+def decode_ordered_parts(relative_paths, destination):
+    parts = [workspace / p for p in relative_paths]
+    missing = [str(p.relative_to(workspace)) for p in parts if not p.is_file()]
+    if missing:
+        raise SystemExit("FINAL_ASSET_PARTS_MISSING=" + ",".join(missing))
+    raw = "".join("".join(p.read_text().split()) for p in parts)
+    try:
+        data = base64.b64decode(raw, validate=True)
+    except Exception as exc:
+        raise SystemExit(f"FINAL_ASSET_BASE64_INVALID={exc}")
+    if not data.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise SystemExit("FINAL_ASSET_NOT_PNG")
+    dest = root / destination
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(data)
+    print(f"FINAL_ASSET={destination}|{len(data)}")
+
 replace_once(
     "EventBooth/App/EventBoothApp.swift",
 '''        .task {
@@ -109,8 +126,30 @@ replace_once(
       )'''
 )
 
-decode_parts(
-    "internal/eventbooth/finalassets/appicon.part*.b64",
+# The premium icon was transferred through two levels of chunking. Do not glob the
+# directory here: the directory deliberately keeps superseded transport chunks for
+# audit history, and concatenating every matching file corrupts the PNG. These are
+# the canonical chunks, in byte-for-byte order.
+decode_ordered_parts(
+    [
+        "internal/eventbooth/finalassets/appicon.part00.b64",
+        "internal/eventbooth/finalassets/appicon.part00_a.b64",
+        "internal/eventbooth/finalassets/appicon.part00_b.b64",
+        "internal/eventbooth/finalassets/appicon.part00_c.b64",
+        "internal/eventbooth/finalassets/appicon.part00b.b64",
+        "internal/eventbooth/finalassets/appicon.part00c.b64",
+        "internal/eventbooth/finalassets/appicon.part00d.b64",
+        "internal/eventbooth/finalassets/appicon.part01.b64",
+        "internal/eventbooth/finalassets/appicon.part02.b64",
+        "internal/eventbooth/finalassets/appicon.part03.b64",
+        "internal/eventbooth/finalassets/appicon.part04.b64",
+        "internal/eventbooth/finalassets/appicon.part04_a.b64",
+        "internal/eventbooth/finalassets/appicon.part04_b.b64",
+        "internal/eventbooth/finalassets/appicon.part04_c.b64",
+        "internal/eventbooth/finalassets/appicon.part04_d.b64",
+        "internal/eventbooth/finalassets/appicon.part04_e.b64",
+        "internal/eventbooth/finalassets/appicon.part04_f.b64",
+    ],
     "EventBooth/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
 )
 brand_png = root / "EventBooth/Resources/Assets.xcassets/BrandMark.imageset/BrandMark.png"
