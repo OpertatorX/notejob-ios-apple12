@@ -1,0 +1,120 @@
+name: Event Booth final visual audit
+on:
+  push:
+    branches: [eventbooth-asc-internal]
+    paths: [".github/workflows/eventbooth-final-visual-audit.yml"]
+permissions:
+  contents: read
+jobs:
+  visual:
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct final build 11 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/eventbooth-src
+          rm -rf "$ROOT" /tmp/eb-final-dd /tmp/eb-final
+          mkdir -p "$ROOT" /tmp/eb-final
+          cat internal/eventbooth/chunks/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/base.tgz
+          tar -xzf /tmp/base.tgz -C "$ROOT"
+          cp internal/eventbooth/overrides/CameraController.swift "$ROOT/EventBooth/Services/CameraController.swift"
+          cat internal/eventbooth/rc2/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/rc2.tgz
+          tar -xzf /tmp/rc2.tgz -C "$ROOT"
+          cat internal/eventbooth/rc4patch/part*.txt > /tmp/rc4.patch
+          (cd "$ROOT" && patch --batch -p1 < /tmp/rc4.patch)
+          python3 internal/eventbooth/rc4hotfix.py
+          for n in 5 6 7; do
+            (cd "$ROOT" && patch --batch -p1 < "$GITHUB_WORKSPACE/internal/eventbooth/rc$n.patch")
+          done
+          python3 internal/eventbooth/rc8hotfix.py
+          python3 internal/eventbooth/finalhotfix.py
+
+          curl -L --fail --retry 3 --silent --show-error \
+            'https://images.unsplash.com/photo-1503738692489-fff01e3e0f3e?auto=format&fit=crop&fm=jpg&q=82&w=2400' \
+            -o "$ROOT/EventBooth/Resources/ScreenshotWedding.jpg"
+          test -s "$ROOT/EventBooth/Resources/ScreenshotWedding.jpg"
+          test "$(shasum -a 256 "$ROOT/EventBooth/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png" | awk '{print $1}')" = "1b9108f943a84178108d6ec5da1f28b3d0c8da3e65d20db194a453bdf242c83f"
+
+      - name: Build final simulator app
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v xcodegen >/dev/null || brew install xcodegen
+          cd /tmp/eventbooth-src
+          xcodegen generate
+          set -o pipefail
+          xcodebuild -project EventBooth.xcodeproj -scheme EventBooth -configuration Release \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/eb-final-dd \
+            CODE_SIGNING_ALLOWED=NO build | tee /tmp/eb-final/build.log
+          if grep -E '/tmp/eventbooth-src/EventBooth/.*: warning:' /tmp/eb-final/build.log; then
+            echo "SOURCE_WARNING_GATE=FAIL"; exit 31
+          fi
+          APP="$(find /tmp/eb-final-dd/Build/Products -path '*Release-iphonesimulator/EventBooth.app' -type d -print -quit)"
+          test -d "$APP"
+          echo "SIM_APP=$APP" >> "$GITHUB_ENV"
+
+      - name: Capture full FR and EN visual matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun simctl shutdown all >/dev/null 2>&1 || true
+          xcrun simctl list devices available -j > /tmp/devices.json
+          python3 - <<'PY' >/tmp/udids.env
+          import json
+          j=json.load(open('/tmp/devices.json'))
+          ds=[d for arr in j['devices'].values() for d in arr if d.get('isAvailable')]
+          phones=[d for d in ds if d['name'].startswith('iPhone')]
+          pads=[d for d in ds if d['name'].startswith('iPad')]
+          def pick(xs,names):
+              for n in names:
+                  for d in xs:
+                      if d['name']==n:return d['udid']
+              return xs[0]['udid']
+          print('IPHONE='+pick(phones,['iPhone 16 Pro Max','iPhone 16 Pro','iPhone 16 Plus']))
+          print('IPAD='+pick(pads,['iPad Pro 13-inch (M4)','iPad Air 13-inch (M3)','iPad Pro 11-inch (M4)']))
+          PY
+          source /tmp/udids.env
+
+          capture_device () {
+            UDID="$1"; PREFIX="$2"; ROUTES="$3"
+            xcrun simctl boot "$UDID" || true
+            sleep 16
+            xcrun simctl install "$UDID" "$SIM_APP"
+            for LANGSPEC in "fr:fr_FR" "en:en_US"; do
+              LANG="${LANGSPEC%%:*}"
+              LOCALE="${LANGSPEC#*:}"
+              for ROUTE in $ROUTES; do
+                OUT="/tmp/eb-final/${PREFIX}-${ROUTE}-${LANG}.png"
+                xcrun simctl terminate "$UDID" com.operatorx.eventbooth >/dev/null 2>&1 || true
+                SIMCTL_CHILD_EVENTBOOTH_SCREEN="$ROUTE" xcrun simctl launch "$UDID" com.operatorx.eventbooth \
+                  -AppleLanguages "($LANG)" -AppleLocale "$LOCALE" >/dev/null
+                sleep 2.2
+                xcrun simctl io "$UDID" screenshot "$OUT"
+                test -s "$OUT"
+              done
+            done
+            xcrun simctl shutdown "$UDID" || true
+          }
+
+          capture_device "$IPHONE" iphone "events dashboard library settings booth"
+          capture_device "$IPAD" ipad "booth dashboard guestbook export eventSettings"
+
+          COUNT="$(find /tmp/eb-final -name '*.png' | wc -l | tr -d ' ')"
+          test "$COUNT" -eq 20
+          sips -g pixelWidth -g pixelHeight /tmp/eb-final/*.png
+          echo "FINAL_VISUAL_CAPTURE_COUNT=$COUNT"
+          echo "EVENTBOOTH_FINAL_VISUAL_AUDIT=PASS"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: EventBooth-final-visual-build11
+          path: |
+            /tmp/eb-final/*.png
+            /tmp/eb-final/build.log
+          if-no-files-found: warn
+          retention-days: 30
