@@ -1,6 +1,5 @@
-name: Event Booth existing RC3 export
+name: Event Booth current RC3 export
 on:
-  workflow_dispatch:
   push:
     branches: [eventbooth-asc-internal]
     paths: [".github/workflows/eventbooth-existing-rc3-export.yml"]
@@ -18,14 +17,17 @@ jobs:
           cp internal/eventbooth/overrides/CameraController.swift /tmp/src/EventBooth/Services/CameraController.swift
           cat internal/eventbooth/rc2/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/rc2.tgz
           tar -xzf /tmp/rc2.tgz -C /tmp/src
-          cat internal/eventbooth/rc3/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/rc3.tgz
-          echo "RC3_SHA=$(sha256sum /tmp/rc3.tgz | cut -d' ' -f1)"
-          echo "=== RC3 FILES ==="
-          tar -tzf /tmp/rc3.tgz | sort
-          tar -xzf /tmp/rc3.tgz -C /tmp/src
-          tar -czf /tmp/EventBooth-existing-RC3-source.tar.gz -C /tmp/src .
+          base64 -d < internal/eventbooth/rc3.patch.gz.b64 > /tmp/rc3.patch.gz
+          echo "49a2f3ecc3b2e21c0b1e97bad5a90c68b9b96ca75bcad7ccb9edfd53644364f0  /tmp/rc3.patch.gz" | sha256sum -c -
+          gunzip -c /tmp/rc3.patch.gz > /tmp/rc3.patch
+          cd /tmp/src
+          patch --batch -p4 < /tmp/rc3.patch
+          cd "$GITHUB_WORKSPACE"
+          cp internal/eventbooth/overrides/AudioRecorderService.swift /tmp/src/EventBooth/Services/AudioRecorderService.swift
+          tar -czf /tmp/EventBooth-current-RC3-source.tar.gz -C /tmp/src .
+          sha256sum /tmp/EventBooth-current-RC3-source.tar.gz
       - uses: actions/upload-artifact@v4
         with:
-          name: EventBooth-existing-RC3-source
-          path: /tmp/EventBooth-existing-RC3-source.tar.gz
+          name: EventBooth-current-RC3-source
+          path: /tmp/EventBooth-current-RC3-source.tar.gz
           retention-days: 7
