@@ -1,4 +1,4 @@
-name: Event Booth RC3 visual audit
+name: Event Booth RC4 visual audit
 
 on:
   push:
@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Reconstruct exact successful RC3
+      - name: Reconstruct audited RC4
         shell: bash
         run: |
           set -euo pipefail
@@ -27,13 +27,10 @@ jobs:
           cp internal/eventbooth/overrides/CameraController.swift /tmp/eventbooth-src/EventBooth/Services/CameraController.swift
           cat internal/eventbooth/rc2/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/rc2.tgz
           tar -xzf /tmp/rc2.tgz -C /tmp/eventbooth-src
-          base64 -D < internal/eventbooth/rc3.patch.gz.b64 > /tmp/rc3.patch.gz
-          echo "49a2f3ecc3b2e21c0b1e97bad5a90c68b9b96ca75bcad7ccb9edfd53644364f0  /tmp/rc3.patch.gz" | shasum -a 256 -c -
-          gunzip -c /tmp/rc3.patch.gz > /tmp/rc3.patch
+          cat internal/eventbooth/rc4patch/part*.txt > /tmp/rc4.patch
           cd /tmp/eventbooth-src
-          patch --batch -p4 < /tmp/rc3.patch
+          patch --batch -p1 < /tmp/rc4.patch
           cd "$GITHUB_WORKSPACE"
-          cp internal/eventbooth/overrides/AudioRecorderService.swift /tmp/eventbooth-src/EventBooth/Services/AudioRecorderService.swift
 
           python3 - <<'PY'
           from pathlib import Path
@@ -48,13 +45,14 @@ jobs:
           await purchases.loadProducts()
           await purchases.refreshEntitlements()
         }'''
-          if old not in s:
-              raise SystemExit('EventBoothApp task block not found')
-          p.write_text(s.replace(old,new))
+          if old in s:
+              p.write_text(s.replace(old,new))
           PY
 
           # Screenshot-only wedding cover; it is injected only into the debug visual-audit build.
-          curl -L --fail --retry 3             'https://images.unsplash.com/photo-1768777273699-1f8ccd51aaff?auto=format&fit=crop&fm=jpg&q=88&w=2400'             -o /tmp/eventbooth-src/EventBooth/Resources/ScreenshotWedding.jpg
+          curl -L --fail --retry 3 \
+            'https://images.unsplash.com/photo-1503738692489-fff01e3e0f3e?auto=format&fit=crop&fm=jpg&q=82&w=2400' \
+            -o /tmp/eventbooth-src/EventBooth/Resources/ScreenshotWedding.jpg
 
       - name: Build simulator app
         shell: bash
@@ -156,7 +154,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: EventBooth-RC3-visual-audit
+          name: EventBooth-RC4-visual-audit
           path: |
             /tmp/visual/*.png
             /tmp/visual-build.log
