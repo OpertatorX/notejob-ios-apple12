@@ -1,0 +1,134 @@
+name: Event Booth build 7 submit
+
+on:
+  push:
+    branches: [eventbooth-asc-internal]
+    paths:
+      - ".github/workflows/eventbooth-build7-submit.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      OX_EAS_PROJECT_ID: "a8ec463b-a530-41c9-af1f-c5499359f881"
+      OX_PROJECT_SLUG: "ox-invoice"
+      OX_BUNDLE_ID: "com.operatorx.oxinvoice"
+      EVENTBOOTH_ASC_APP_ID: "6818422621"
+      EVENTBOOTH_EAS_PROJECT_ID: "9753c8e1-2a24-412c-af5a-adb6c10ec789"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "24" }
+
+      - name: Download Event Booth build 7 IPA
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/eventbooth7
+          gh run download 37014394664 \
+            --repo OpertatorX/notejob-ios-apple12 \
+            --name EventBooth-IPA-build7 \
+            --dir /tmp/eventbooth7
+          IPA="$(find /tmp/eventbooth7 -name '*.ipa' -print -quit)"
+          test -s "$IPA"
+          echo "EVENTBOOTH_IPA=$IPA" >> "$GITHUB_ENV"
+          ls -lh "$IPA"
+
+      - name: Resolve stored App Store Connect key
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/easlib
+          npm install --prefix /tmp/easlib eas-cli@latest --ignore-scripts --no-audit --no-fund >/dev/null
+          cat >/tmp/resolve.cjs <<'NODE'
+          const fs=require('fs');
+          const E='/tmp/easlib/node_modules/eas-cli/build';
+          const {createGraphqlClient}=require(E+'/commandUtils/context/contextUtils/createGraphqlClient.js');
+          const {getOwnerAccountForProjectIdAsync}=require(E+'/project/projectUtils.js');
+          const {getAscApiKeyForAppSubmissionsAsync}=require(E+'/credentials/ios/api/GraphqlClient.js');
+          const {AppStoreConnectApiKeyQuery}=require(E+'/graphql/queries/AppStoreConnectApiKeyQuery.js');
+          (async()=>{
+            const gql=createGraphqlClient({accessToken:process.env.EXPO_TOKEN,sessionSecret:null});
+            const account=await getOwnerAccountForProjectIdAsync(gql,process.env.OX_EAS_PROJECT_ID);
+            const frag=await getAscApiKeyForAppSubmissionsAsync(gql,{
+              account,projectName:process.env.OX_PROJECT_SLUG,bundleIdentifier:process.env.OX_BUNDLE_ID
+            });
+            if(!frag) throw new Error('ASC key missing');
+            const key=await AppStoreConnectApiKeyQuery.getByIdAsync(gql,frag.id);
+            if(!key?.keyP8||!key?.keyIdentifier||!key?.issuerIdentifier) throw new Error('ASC key incomplete');
+            fs.writeFileSync('/tmp/EventBoothAuthKey.p8',key.keyP8,{mode:0o600});
+            fs.appendFileSync(process.env.GITHUB_ENV,
+              'ASC_KEY_ID='+key.keyIdentifier+'\nASC_ISSUER_ID='+key.issuerIdentifier+'\n');
+            console.log('ASC_KEY_READY=yes');
+          })().catch(e=>{console.error(e.message);process.exit(1)})
+          NODE
+          node /tmp/resolve.cjs
+
+      - name: Prepare EAS submit project
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/eventbooth-submit
+          mkdir -p /tmp/eventbooth-submit
+          cd /tmp/eventbooth-submit
+          cat > app.json <<JSON
+          {
+            "expo": {
+              "name": "Event Booth",
+              "slug": "eventbooth",
+              "owner": "operatorx",
+              "version": "1.0.0",
+              "ios": {
+                "bundleIdentifier": "com.operatorx.eventbooth",
+                "buildNumber": "7",
+                "supportsTablet": true
+              },
+              "extra": {
+                "eas": { "projectId": "$EVENTBOOTH_EAS_PROJECT_ID" }
+              }
+            }
+          }
+          JSON
+          cat > package.json <<'JSON'
+          {"name":"eventbooth-submit","version":"1.0.0","private":true}
+          JSON
+          cat > eas.json <<JSON
+          {
+            "cli": { "version": ">= 22.0.0", "appVersionSource": "local" },
+            "submit": {
+              "production": {
+                "ios": {
+                  "ascAppId": "$EVENTBOOTH_ASC_APP_ID",
+                  "ascApiKeyPath": "/tmp/EventBoothAuthKey.p8",
+                  "ascApiKeyId": "$ASC_KEY_ID",
+                  "ascApiKeyIssuerId": "$ASC_ISSUER_ID"
+                }
+              }
+            }
+          }
+          JSON
+
+      - name: Submit build 7 to App Store Connect
+        working-directory: /tmp/eventbooth-submit
+        shell: bash
+        run: |
+          set -o pipefail
+          npx --yes eas-cli@latest submit \
+            --platform ios \
+            --profile production \
+            --path "$EVENTBOOTH_IPA" \
+            --non-interactive \
+            --wait 2>&1 | tee /tmp/eventbooth-build7-submit.log
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: EventBooth-build7-submit-log
+          path: /tmp/eventbooth-build7-submit.log
+          if-no-files-found: warn
+          retention-days: 7
