@@ -31,7 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/eventbooth-ipa
-          gh run download 36978001372 \
+          gh run download 36978669659 \
             --repo OpertatorX/notejob-ios-apple12 \
             --name EventBooth-IPA-build2-fixed \
             --dir /tmp/eventbooth-ipa
