@@ -43,7 +43,7 @@ jobs:
 
           # Apply RC3 audit patch: visual parity, screenshot fixtures, compile fixes,
           # free test captures, settings polish and PDF preview.
-          base64 --decode internal/eventbooth/rc3.patch.gz.b64 > /tmp/eventbooth-rc3.patch.gz
+          base64 -D < internal/eventbooth/rc3.patch.gz.b64 > /tmp/eventbooth-rc3.patch.gz
           echo "49a2f3ecc3b2e21c0b1e97bad5a90c68b9b96ca75bcad7ccb9edfd53644364f0  /tmp/eventbooth-rc3.patch.gz" | shasum -a 256 -c -
           gunzip -c /tmp/eventbooth-rc3.patch.gz > /tmp/eventbooth-rc3.patch
           cd /tmp/eventbooth-src
