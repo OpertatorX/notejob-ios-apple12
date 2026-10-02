@@ -1,0 +1,24 @@
+name: Event Booth source inspect
+on:
+  push:
+    branches: [eventbooth-asc-internal]
+    paths: [".github/workflows/eventbooth-source-inspect.yml"]
+permissions: { contents: read }
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -euo pipefail
+          mkdir -p /tmp/eventbooth-src
+          cat internal/eventbooth/chunks/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/eventbooth-src.tar.gz
+          tar -xzf /tmp/eventbooth-src.tar.gz -C /tmp/eventbooth-src
+          echo '=== ROOT ==='
+          find /tmp/eventbooth-src -maxdepth 3 -type f | sort
+          echo '=== IMAGES/ASSETS ==='
+          find /tmp/eventbooth-src -type f | grep -Ei '\.(png|jpg|jpeg)$|xcassets|appicon|contents\.json' | sort || true
+          echo '=== project.yml ==='
+          cat /tmp/eventbooth-src/project.yml
+          echo '=== Info.plist candidates ==='
+          find /tmp/eventbooth-src -type f -iname '*plist' -maxdepth 5 -print -exec cat {} \; || true
