@@ -1,0 +1,46 @@
+name: Event Booth prepare signed build 11
+on:
+  push:
+    branches: [eventbooth-asc-internal]
+    paths: [".github/workflows/eventbooth-prepare-build11.yml"]
+permissions:
+  contents: write
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: eventbooth-asc-internal
+      - name: Promote signed pipeline to final build 11
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('.github/workflows/eventbooth-signed-ipa.yml')
+          s=p.read_text()
+          s=s.replace('name: Event Booth RC8 responsive build 10 signed IPA','name: Event Booth final build 11 signed IPA',1)
+          pattern=r'''          python3 "\$GITHUB_WORKSPACE/internal/eventbooth/rc8hotfix\.py"\n          python3 - <<'PY'\n.*?          grep -q 'CURRENT_PROJECT_VERSION: 10' /tmp/eventbooth-src/project\.yml'''
+          repl='''          python3 "$GITHUB_WORKSPACE/internal/eventbooth/rc8hotfix.py"\n          python3 "$GITHUB_WORKSPACE/internal/eventbooth/finalhotfix.py"\n          python3 "$GITHUB_WORKSPACE/internal/eventbooth/approvedicon.py"\n          grep -q 'CURRENT_PROJECT_VERSION: 11' /tmp/eventbooth-src/project.yml\n          test -s /tmp/eventbooth-src/EventBooth/Resources/Assets.xcassets/BrandMark.imageset/BrandMark.png'''
+          s2,n=re.subn(pattern,repl,s,count=1,flags=re.S)
+          if n!=1:
+              raise SystemExit(f'BUILD11_RECONSTRUCTION_REPLACE_COUNT={n}')
+          s=s2
+          s=s.replace('grep -qx "10"','grep -qx "11"')
+          s=s.replace('name: EventBooth-IPA-build10','name: EventBooth-IPA-build11')
+          if 'CURRENT_PROJECT_VERSION: 10' in s or 'EventBooth-IPA-build10' in s or 'grep -qx "10"' in s:
+              raise SystemExit('BUILD10_TOKEN_REMAINS')
+          if 'approvedicon.py' not in s or 'finalhotfix.py' not in s:
+              raise SystemExit('FINAL_HOTFIX_MISSING')
+          p.write_text(s)
+          print('EVENTBOOTH_BUILD11_PIPELINE_PREP=PASS')
+          PY
+          git config user.name "OperatorX Automation"
+          git config user.email "actions@operatorx.invalid"
+          git add .github/workflows/eventbooth-signed-ipa.yml
+          git diff --cached --check
+          git diff --cached --quiet && { echo 'NO_BUILD11_CHANGES'; exit 0; }
+          git commit -m "Promote Event Booth signed pipeline to final build 11"
+          git push origin HEAD:eventbooth-asc-internal
