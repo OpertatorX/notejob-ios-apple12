@@ -33,9 +33,10 @@ jobs:
           cat internal/eventbooth/rc4patch/part*.txt > /tmp/rc4.patch
           (cd "$ROOT" && patch --batch -p1 < /tmp/rc4.patch)
           python3 internal/eventbooth/rc4hotfix.py
-          for n in 5 6 7 8; do
+          for n in 5 6 7; do
             (cd "$ROOT" && patch --batch -p1 < "$GITHUB_WORKSPACE/internal/eventbooth/rc$n.patch")
           done
+          python3 internal/eventbooth/rc8hotfix.py
           python3 - <<'PY'
           from pathlib import Path
           p=Path("/tmp/eventbooth-src/project.yml")
