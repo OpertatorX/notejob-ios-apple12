@@ -98,32 +98,45 @@ jobs:
           phones=[d for d in ds if d['name'].startswith('iPhone')]
           pads=[d for d in ds if d['name'].startswith('iPad')]
           if not phones or not pads: raise SystemExit('Missing iPhone/iPad simulator')
-          print('IPHONE_UDID='+phones[-1]['udid'])
-          print('IPAD_UDID='+pads[-1]['udid'])
+          def pick(xs, preferred):
+              for p in preferred:
+                  for d in xs:
+                      if d['name']==p: return d
+              return xs[0]
+          phone=pick(phones,['iPhone 16 Pro Max','iPhone 16 Plus','iPhone 16 Pro','iPhone 16e'])
+          pad=pick(pads,['iPad Pro 13-inch (M4)','iPad Air 13-inch (M3)','iPad Air 11-inch (M3)'])
+          print('IPHONE_UDID='+phone['udid'])
+          print('IPAD_UDID='+pad['udid'])
           PY
-          cat /tmp/udids.env
           source /tmp/udids.env
-          for U in "$IPHONE_UDID" "$IPAD_UDID"; do
-            xcrun simctl boot "$U" || true
-            xcrun simctl bootstatus "$U" -b
-            xcrun simctl install "$U" "$SIM_APP"
-          done
 
+          xcrun simctl boot "$IPHONE_UDID" || true
+          sleep 18
+          xcrun simctl install "$IPHONE_UDID" "$SIM_APP"
           xcrun simctl launch "$IPHONE_UDID" com.operatorx.eventbooth -AppleLanguages '(fr)' -AppleLocale fr_FR || true
-          sleep 5
+          sleep 6
           xcrun simctl io "$IPHONE_UDID" screenshot /tmp/eb-shots/iphone-fr.png
           xcrun simctl terminate "$IPHONE_UDID" com.operatorx.eventbooth || true
           xcrun simctl launch "$IPHONE_UDID" com.operatorx.eventbooth -AppleLanguages '(en)' -AppleLocale en_US || true
-          sleep 4
-          xcrun simctl io "$IPHONE_UDID" screenshot /tmp/eb-shots/iphone-en.png
-
-          xcrun simctl launch "$IPAD_UDID" com.operatorx.eventbooth -AppleLanguages '(fr)' -AppleLocale fr_FR || true
           sleep 5
+          xcrun simctl io "$IPHONE_UDID" screenshot /tmp/eb-shots/iphone-en.png
+          xcrun simctl shutdown "$IPHONE_UDID" || true
+
+          xcrun simctl boot "$IPAD_UDID" || true
+          sleep 18
+          xcrun simctl install "$IPAD_UDID" "$SIM_APP"
+          xcrun simctl launch "$IPAD_UDID" com.operatorx.eventbooth -AppleLanguages '(fr)' -AppleLocale fr_FR || true
+          sleep 6
           xcrun simctl io "$IPAD_UDID" screenshot /tmp/eb-shots/ipad-fr.png
           xcrun simctl terminate "$IPAD_UDID" com.operatorx.eventbooth || true
           xcrun simctl launch "$IPAD_UDID" com.operatorx.eventbooth -AppleLanguages '(en)' -AppleLocale en_US || true
-          sleep 4
+          sleep 5
           xcrun simctl io "$IPAD_UDID" screenshot /tmp/eb-shots/ipad-en.png
+          xcrun simctl shutdown "$IPAD_UDID" || true
+          test -s /tmp/eb-shots/iphone-fr.png
+          test -s /tmp/eb-shots/iphone-en.png
+          test -s /tmp/eb-shots/ipad-fr.png
+          test -s /tmp/eb-shots/ipad-en.png
 
       - name: Render App Store promo canvases
         shell: bash
