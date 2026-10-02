@@ -47,7 +47,7 @@ jobs:
           echo "49a2f3ecc3b2e21c0b1e97bad5a90c68b9b96ca75bcad7ccb9edfd53644364f0  /tmp/eventbooth-rc3.patch.gz" | shasum -a 256 -c -
           gunzip -c /tmp/eventbooth-rc3.patch.gz > /tmp/eventbooth-rc3.patch
           cd /tmp/eventbooth-src
-          patch -p3 < /tmp/eventbooth-rc3.patch
+          patch --batch -p4 < /tmp/eventbooth-rc3.patch
           cd "$GITHUB_WORKSPACE"
 
           # Apple requires a complete iOS AppIcon catalog + CFBundleIconName.
