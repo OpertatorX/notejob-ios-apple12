@@ -35,6 +35,24 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           cp internal/eventbooth/overrides/AudioRecorderService.swift /tmp/eventbooth-src/EventBooth/Services/AudioRecorderService.swift
 
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/eventbooth-src/EventBooth/App/EventBoothApp.swift')
+          s=p.read_text()
+          old='''        .task {
+          await purchases.loadProducts()
+          await purchases.refreshEntitlements()
+        }'''
+          new='''        .task {
+          guard !EBScreenshotMode.isEnabled else { return }
+          await purchases.loadProducts()
+          await purchases.refreshEntitlements()
+        }'''
+          if old not in s:
+              raise SystemExit('EventBoothApp task block not found')
+          p.write_text(s.replace(old,new))
+          PY
+
           # Screenshot-only wedding cover; it is injected only into the debug visual-audit build.
           curl -L --fail --retry 3             'https://images.unsplash.com/photo-1768777273699-1f8ccd51aaff?auto=format&fit=crop&fm=jpg&q=88&w=2400'             -o /tmp/eventbooth-src/EventBooth/Resources/ScreenshotWedding.jpg
 
@@ -79,8 +97,8 @@ jobs:
         run: |
           set -euo pipefail
           source /tmp/devices.env
-          xcrun simctl boot "$IPHONE"
-          sleep 15
+          xcrun simctl boot "$IPHONE" || true
+          xcrun simctl bootstatus "$IPHONE" -b
           xcrun simctl install "$IPHONE" "$SIM_APP"
           xcrun simctl ui "$IPHONE" appearance light || true
 
@@ -104,8 +122,8 @@ jobs:
         run: |
           set -euo pipefail
           source /tmp/devices.env
-          xcrun simctl boot "$IPAD"
-          sleep 15
+          xcrun simctl boot "$IPAD" || true
+          xcrun simctl bootstatus "$IPAD" -b
           xcrun simctl install "$IPAD" "$SIM_APP"
           xcrun simctl ui "$IPAD" appearance light || true
 
