@@ -32,10 +32,15 @@ cat internal/eventbooth/rc6.patch > /tmp/eb-rc6.patch
   cd "$ROOT"
   patch --batch -p1 < /tmp/eb-rc6.patch
 )
+cat internal/eventbooth/rc7.patch > /tmp/eb-rc7.patch
+(
+  cd "$ROOT"
+  patch --batch -p1 < /tmp/eb-rc7.patch
+)
 python3 - <<'PY'
 from pathlib import Path
 p=Path("/tmp/eventbooth-src/project.yml")
-x=p.read_text().replace("CURRENT_PROJECT_VERSION: 5","CURRENT_PROJECT_VERSION: 8")
+x=p.read_text().replace("CURRENT_PROJECT_VERSION: 5","CURRENT_PROJECT_VERSION: 9")
 p.write_text(x)
 PY
 
@@ -146,4 +151,4 @@ xcrun simctl shutdown "$IPAD"
 COUNT="$(find "$OUT" -name '*.png' | wc -l | tr -d ' ')"
 test "$COUNT" -eq 12
 sips -g pixelWidth -g pixelHeight "$OUT"/*.png
-echo "RC6_REFERENCE_CAPTURE=PASS"
+echo "RC7_REFERENCE_CAPTURE=PASS"
