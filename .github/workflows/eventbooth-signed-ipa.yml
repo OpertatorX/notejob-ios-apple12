@@ -56,6 +56,8 @@ jobs:
           cat "$GITHUB_WORKSPACE/internal/eventbooth/rc5.patch" > /tmp/eventbooth-rc5.patch
           cd /tmp/eventbooth-src
           patch --batch -p1 < /tmp/eventbooth-rc5.patch
+          cat "$GITHUB_WORKSPACE/internal/eventbooth/rc6.patch" > /tmp/eventbooth-rc6.patch
+          patch --batch -p1 < /tmp/eventbooth-rc6.patch
           python3 - <<'PY'
           from pathlib import Path
           p=Path('/tmp/eventbooth-src/project.yml')
@@ -63,8 +65,8 @@ jobs:
           p.write_text(s)
           PY
           grep -q 'CURRENT_PROJECT_VERSION: 7' /tmp/eventbooth-src/project.yml
-          test "$(grep -c ' = ' /tmp/eventbooth-src/EventBooth/Resources/fr.lproj/Localizable.strings)" -eq 157
-          test "$(grep -c ' = ' /tmp/eventbooth-src/EventBooth/Resources/en.lproj/Localizable.strings)" -eq 157
+          test "$(grep -c ' = ' /tmp/eventbooth-src/EventBooth/Resources/fr.lproj/Localizable.strings)" -eq 158
+          test "$(grep -c ' = ' /tmp/eventbooth-src/EventBooth/Resources/en.lproj/Localizable.strings)" -eq 158
           cd "$GITHUB_WORKSPACE"
 
           # Apple requires a complete iOS AppIcon catalog + CFBundleIconName.
