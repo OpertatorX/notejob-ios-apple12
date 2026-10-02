@@ -43,7 +43,7 @@ jobs:
 
           # Apply V4 zero-trust audit overlay: visual reference alignment,
           # localization, privacy manifest, project resources, settings and screenshot routing.
-          cat internal/eventbooth/v4/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/eventbooth-v4-overlay.tar.gz
+          cat internal/eventbooth/v4s/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/eventbooth-v4-overlay.tar.gz
           echo "0b70e030720e79c5070cbdb554c9be3aa7e6dc027cc50025c203b665db13edf0  /tmp/eventbooth-v4-overlay.tar.gz" | shasum -a 256 -c -
           tar -xzf /tmp/eventbooth-v4-overlay.tar.gz -C /tmp/eventbooth-src
 
