@@ -104,7 +104,7 @@ capture_device () {
 }
 
 xcrun simctl boot "$IPHONE" || true
-xcrun simctl bootstatus "$IPHONE" -b
+sleep 18
 xcrun simctl install "$IPHONE" "$APP"
 xcrun simctl ui "$IPHONE" appearance light || true
 capture_device "$IPHONE" events fr fr_FR iphone-events-fr.png
@@ -116,7 +116,7 @@ capture_device "$IPHONE" library en en_US iphone-library-en.png
 xcrun simctl shutdown "$IPHONE"
 
 xcrun simctl boot "$IPAD" || true
-xcrun simctl bootstatus "$IPAD" -b
+sleep 18
 xcrun simctl install "$IPAD" "$APP"
 xcrun simctl ui "$IPAD" appearance light || true
 capture_device "$IPAD" booth fr fr_FR ipad-booth-fr.png
