@@ -63,7 +63,8 @@ replace_once(
 '''        Image("BrandMark")
           .resizable()
           .scaledToFit()
-          .frame(width: 92, height: 82)
+          .frame(width: 82, height: 82)
+          .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
           .shadow(color: .black.opacity(0.15), radius: 10, y: 3)
           .accessibilityHidden(true)'''
 )
@@ -78,7 +79,8 @@ replace_once(
 '''      Image("BrandMark")
         .resizable()
         .scaledToFit()
-        .frame(width: 50, height: 44)
+        .frame(width: 46, height: 46)
+        .clipShape(Circle())
         .frame(width: 66, height: 56, alignment: .leading)
         .shadow(color: .black.opacity(0.28), radius: 8, y: 2)
         .contentShape(Rectangle())
@@ -111,10 +113,10 @@ decode_parts(
     "internal/eventbooth/finalassets/appicon.part*.b64",
     "EventBooth/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
 )
-decode_parts(
-    "internal/eventbooth/finalassets/brandmark.part*.b64",
-    "EventBooth/Resources/Assets.xcassets/BrandMark.imageset/BrandMark.png"
-)
+brand_png = root / "EventBooth/Resources/Assets.xcassets/BrandMark.imageset/BrandMark.png"
+brand_png.parent.mkdir(parents=True, exist_ok=True)
+brand_png.write_bytes((root / "EventBooth/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png").read_bytes())
+print(f"FINAL_ASSET=EventBooth/Resources/Assets.xcassets/BrandMark.imageset/BrandMark.png|{brand_png.stat().st_size}")
 
 brand_contents = root / "EventBooth/Resources/Assets.xcassets/BrandMark.imageset/Contents.json"
 brand_contents.write_text("""{
