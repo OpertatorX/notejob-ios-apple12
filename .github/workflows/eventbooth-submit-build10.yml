@@ -1,0 +1,102 @@
+name: Event Booth submit responsive build 10
+on:
+  push:
+    branches:
+      - eventbooth-asc-internal
+    paths:
+      - ".github/workflows/eventbooth-submit-build10.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Download signed responsive IPA
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/eventbooth-build10
+          gh run download 37019666919 \
+            --repo OpertatorX/notejob-ios-apple12 \
+            --name EventBooth-IPA-build10 \
+            --dir /tmp/eventbooth-build10
+          IPA="$(find /tmp/eventbooth-build10 -name '*.ipa' -print -quit)"
+          test -s "$IPA"
+          echo "EVENTBOOTH_IPA=$IPA" >> "$GITHUB_ENV"
+          ls -lh "$IPA"
+
+      - name: Configure Event Booth EAS project
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/eventbooth-submit
+          cd /tmp/eventbooth-submit
+          cat > app.json <<'JSON'
+          {
+            "expo": {
+              "name": "Event Booth",
+              "slug": "eventbooth",
+              "owner": "operatorx",
+              "version": "1.0.0",
+              "ios": {
+                "bundleIdentifier": "com.operatorx.eventbooth",
+                "buildNumber": "10",
+                "supportsTablet": true
+              },
+              "extra": {
+                "eas": {
+                  "projectId": "9753c8e1-2a24-412c-af5a-adb6c10ec789"
+                }
+              }
+            }
+          }
+          JSON
+          cat > package.json <<'JSON'
+          {"name":"eventbooth-submit-build10","version":"1.0.0","private":true}
+          JSON
+          cat > eas.json <<'JSON'
+          {
+            "cli": { "version": ">= 22.0.0", "appVersionSource": "local" },
+            "submit": {
+              "production": {
+                "ios": {
+                  "ascAppId": "6818422621",
+                  "appleTeamId": "67ZL6VYTQ8"
+                }
+              }
+            }
+          }
+          JSON
+
+      - name: Submit build 10 to App Store Connect
+        working-directory: /tmp/eventbooth-submit
+        shell: bash
+        run: |
+          set -o pipefail
+          npx --yes eas-cli@latest submit \
+            --platform ios \
+            --profile production \
+            --path "$EVENTBOOTH_IPA" \
+            --non-interactive \
+            --wait 2>&1 | tee /tmp/eventbooth-build10-submit.log
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: EventBooth-build10-submit-log
+          path: /tmp/eventbooth-build10-submit.log
+          if-no-files-found: warn
+          retention-days: 7
