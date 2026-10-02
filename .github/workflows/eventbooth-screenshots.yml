@@ -100,8 +100,6 @@ jobs:
           if not phones or not pads: raise SystemExit('Missing iPhone/iPad simulator')
           print('IPHONE_UDID='+phones[-1]['udid'])
           print('IPAD_UDID='+pads[-1]['udid'])
-          print('IPHONE_NAME='+phones[-1]['name'])
-          print('IPAD_NAME='+pads[-1]['name'])
           PY
           cat /tmp/udids.env
           source /tmp/udids.env
