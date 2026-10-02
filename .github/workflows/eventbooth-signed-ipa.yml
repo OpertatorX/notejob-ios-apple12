@@ -39,21 +39,20 @@ jobs:
           ICONDIR=/tmp/eventbooth-src/EventBooth/Resources/Assets.xcassets/AppIcon.appiconset
           SRCICON="$ICONDIR/AppIcon-1024.png"
           test -s "$SRCICON"
-          for spec in \
-            "20 2 AppIcon-20@2x.png" "20 3 AppIcon-20@3x.png" \
-            "29 2 AppIcon-29@2x.png" "29 3 AppIcon-29@3x.png" \
-            "40 2 AppIcon-40@2x.png" "40 3 AppIcon-40@3x.png" \
-            "60 2 AppIcon-60@2x.png" "60 3 AppIcon-60@3x.png" \
-            "20 1 AppIcon-20.png" "29 1 AppIcon-29.png" "40 1 AppIcon-40.png" \
-            "76 1 AppIcon-76.png" "76 2 AppIcon-76@2x.png" \
-            "83.5 2 AppIcon-83.5@2x.png"; do
-            set -- $spec
-            px=$(python3 - <<PY
-print(int(float("$1")*int("$2")))
-PY
-)
-            sips -z "$px" "$px" "$SRCICON" --out "$ICONDIR/$3" >/dev/null
-          done
+          sips -z 40 40 "$SRCICON" --out "$ICONDIR/AppIcon-20@2x.png" >/dev/null
+          sips -z 60 60 "$SRCICON" --out "$ICONDIR/AppIcon-20@3x.png" >/dev/null
+          sips -z 58 58 "$SRCICON" --out "$ICONDIR/AppIcon-29@2x.png" >/dev/null
+          sips -z 87 87 "$SRCICON" --out "$ICONDIR/AppIcon-29@3x.png" >/dev/null
+          sips -z 80 80 "$SRCICON" --out "$ICONDIR/AppIcon-40@2x.png" >/dev/null
+          sips -z 120 120 "$SRCICON" --out "$ICONDIR/AppIcon-40@3x.png" >/dev/null
+          sips -z 120 120 "$SRCICON" --out "$ICONDIR/AppIcon-60@2x.png" >/dev/null
+          sips -z 180 180 "$SRCICON" --out "$ICONDIR/AppIcon-60@3x.png" >/dev/null
+          sips -z 20 20 "$SRCICON" --out "$ICONDIR/AppIcon-20.png" >/dev/null
+          sips -z 29 29 "$SRCICON" --out "$ICONDIR/AppIcon-29.png" >/dev/null
+          sips -z 40 40 "$SRCICON" --out "$ICONDIR/AppIcon-40.png" >/dev/null
+          sips -z 76 76 "$SRCICON" --out "$ICONDIR/AppIcon-76.png" >/dev/null
+          sips -z 152 152 "$SRCICON" --out "$ICONDIR/AppIcon-76@2x.png" >/dev/null
+          sips -z 167 167 "$SRCICON" --out "$ICONDIR/AppIcon-83.5@2x.png" >/dev/null
           cat > "$ICONDIR/Contents.json" <<'JSON'
           {
             "images": [
