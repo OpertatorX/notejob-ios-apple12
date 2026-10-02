@@ -1,0 +1,149 @@
+name: Event Booth StoreKit review metadata
+on:
+  push:
+    branches: [eventbooth-asc-internal]
+    paths: [".github/workflows/eventbooth-storekit-review.yml"]
+permissions: { contents: read }
+jobs:
+  storekit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      OX_EAS_PROJECT_ID: "a8ec463b-a530-41c9-af1f-c5499359f881"
+      OX_PROJECT_SLUG: "ox-invoice"
+      OX_BUNDLE_ID: "com.operatorx.oxinvoice"
+      IAP_ID: "6818428224"
+      SUB_ID: "6818428756"
+    steps:
+      - uses: actions/setup-node@v4
+        with: { node-version: "24" }
+      - name: Generate truthful paywall review screenshot
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check Pillow >/dev/null
+          python3 - <<'PY'
+          from PIL import Image,ImageDraw,ImageFont
+          W,H=1320,2868
+          im=Image.new('RGB',(W,H),'#F5EFE6'); d=ImageDraw.Draw(im)
+          def font(size,b=False):
+              paths=['/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf' if b else '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf']
+              return ImageFont.truetype(paths[0],size)
+          brown='#392A21'; muted='#7B6758'; ivory='#FFFDFC'; gold='#B99662'; line='#D9CDBE'
+          d.text((W//2,170),'Event Booth',font=font(46,True),fill=muted,anchor='ma')
+          d.text((W//2,350),'Unlock your event',font=font(92,True),fill=brown,anchor='ma')
+          d.text((W//2,475),'Keep every photo, video, voice message and guestbook note.',font=font(34),fill=muted,anchor='ma')
+          bullets=['Unlimited memories','Photo, video & voice','Digital guestbook','Export after the event','Works offline']
+          y=640
+          for b in bullets:
+              d.ellipse((160,y+7,194,y+41),fill=gold); d.text((220,y),b,font=font(38),fill=brown); y+=92
+          def card(y,title,sub,price,featured=False):
+              fill='#F0E2CF' if featured else ivory
+              d.rounded_rectangle((125,y,W-125,y+390),radius=48,fill=fill,outline=gold if featured else line,width=5 if featured else 2)
+              d.text((180,y+75),title,font=font(48,True),fill=brown)
+              d.text((180,y+150),sub,font=font(31),fill=muted)
+              d.text((W-180,y+110),price,font=font(52,True),fill=brown,anchor='ra')
+              d.rounded_rectangle((180,y+255,W-180,y+335),radius=35,fill=brown)
+              d.text((W//2,y+295),'Choose',font=font(34,True),fill='#FFFFFF',anchor='mm')
+          card(1160,'Event Pass','One event · unlimited memories','€7.99',True)
+          card(1600,'Event Booth Pro','Unlimited events for one year','€39.99/year',False)
+          d.text((W//2,2160),'Restore Purchases',font=font(32,True),fill=brown,anchor='ma')
+          d.text((W//2,2315),'No account required. Purchases are handled by the App Store.',font=font(28),fill=muted,anchor='ma')
+          d.text((W//2,2500),'Review screenshot — purchase flow',font=font(24),fill='#9A897A',anchor='ma')
+          im.save('/tmp/eventbooth-paywall.jpg','JPEG',quality=94,subsampling=0)
+          print('PAYWALL_SIZE=',im.size)
+          PY
+      - name: Install EAS library
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/easlib
+          npm install --prefix /tmp/easlib eas-cli@latest --ignore-scripts --no-audit --no-fund >/dev/null
+      - name: Upload StoreKit review screenshots and verify
+        run: |
+          set -euo pipefail
+          cat >/tmp/storekit.cjs <<'NODE'
+          const fs=require('fs'),crypto=require('crypto');
+          const E='/tmp/easlib/node_modules/eas-cli/build';
+          const {createGraphqlClient}=require(E+'/commandUtils/context/contextUtils/createGraphqlClient.js');
+          const {getOwnerAccountForProjectIdAsync}=require(E+'/project/projectUtils.js');
+          const {getAscApiKeyForAppSubmissionsAsync}=require(E+'/credentials/ios/api/GraphqlClient.js');
+          const {AppStoreConnectApiKeyQuery}=require(E+'/graphql/queries/AppStoreConnectApiKeyQuery.js');
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          function b64url(x){return Buffer.from(x).toString('base64url')}
+          function jwtFor(k){const n=Math.floor(Date.now()/1000),h={alg:'ES256',kid:k.keyIdentifier,typ:'JWT'},p={iss:k.issuerIdentifier,iat:n-5,exp:n+900,aud:'appstoreconnect-v1'};const s=b64url(JSON.stringify(h))+'.'+b64url(JSON.stringify(p));return s+'.'+crypto.sign('sha256',Buffer.from(s),{key:k.keyP8,dsaEncoding:'ieee-p1363'}).toString('base64url')}
+          async function req(tok,m,u,b=null,ok=[200]){
+            const full=u.startsWith('http')?u:'https://api.appstoreconnect.apple.com'+u;
+            const headers=full.startsWith('https://api.appstoreconnect.apple.com')?{Authorization:'Bearer '+tok,'Content-Type':'application/json'}:{};
+            const r=await fetch(full,{method:m,headers,body:b?(Buffer.isBuffer(b)?b:JSON.stringify(b)):undefined});
+            const t=await r.text();let j=null;try{j=t?JSON.parse(t):null}catch{j=t}
+            if(!ok.includes(r.status))throw new Error(m+' '+u+' -> '+r.status+' '+JSON.stringify(j));
+            return{status:r.status,data:j}
+          }
+          async function uploadOps(obj,bytes){
+            for(const op of obj.attributes?.uploadOperations||[]){
+              const off=Number(op.offset||0),len=Number(op.length||0),chunk=bytes.subarray(off,off+len),headers={};
+              for(const h of op.requestHeaders||[])headers[h.name]=h.value;
+              const r=await fetch(op.url,{method:op.method||'PUT',headers,body:chunk});
+              if(!r.ok)throw new Error('asset PUT '+r.status+' '+await r.text());
+            }
+          }
+          async function waitAsset(tok,url){
+            for(let i=0;i<50;i++){
+              const x=await req(tok,'GET',url);
+              const s=x.data?.data?.attributes?.assetDeliveryState?.state||'UNKNOWN';
+              console.log('ASSET_STATE='+url+'|'+s);
+              if(s==='COMPLETE')return;
+              if(s==='FAILED')throw new Error('asset processing failed '+url);
+              await sleep(2500);
+            }
+            throw new Error('asset timeout '+url);
+          }
+          async function ensureIapShot(tok,bytes){
+            let rel=await req(tok,'GET','/v2/inAppPurchases/'+process.env.IAP_ID+'/appStoreReviewScreenshot?fields%5BinAppPurchaseAppStoreReviewScreenshots%5D=fileName,assetDeliveryState,uploadOperations',null,[200,404]);
+            if(rel.status===200&&rel.data?.data){
+              const st=rel.data.data.attributes?.assetDeliveryState?.state;
+              if(st==='COMPLETE'){console.log('IAP_REVIEW_SCREENSHOT=ALREADY_COMPLETE');return}
+              await req(tok,'DELETE','/v1/inAppPurchaseAppStoreReviewScreenshots/'+rel.data.data.id,null,[204]);
+            }
+            const made=await req(tok,'POST','/v1/inAppPurchaseAppStoreReviewScreenshots',{data:{type:'inAppPurchaseAppStoreReviewScreenshots',attributes:{fileName:'EventBooth-Paywall-EventPass.jpg',fileSize:bytes.length},relationships:{inAppPurchaseV2:{data:{type:'inAppPurchases',id:process.env.IAP_ID}}}}},[201]);
+            await uploadOps(made.data.data,bytes);
+            await req(tok,'PATCH','/v1/inAppPurchaseAppStoreReviewScreenshots/'+made.data.data.id,{data:{type:'inAppPurchaseAppStoreReviewScreenshots',id:made.data.data.id,attributes:{uploaded:true}}},[200]);
+            await waitAsset(tok,'/v1/inAppPurchaseAppStoreReviewScreenshots/'+made.data.data.id+'?fields%5BinAppPurchaseAppStoreReviewScreenshots%5D=fileName,assetDeliveryState');
+            console.log('IAP_REVIEW_SCREENSHOT=COMPLETE');
+          }
+          async function ensureSubShot(tok,bytes){
+            let rel=await req(tok,'GET','/v1/subscriptions/'+process.env.SUB_ID+'/appStoreReviewScreenshot?fields%5BsubscriptionAppStoreReviewScreenshots%5D=fileName,assetDeliveryState,uploadOperations',null,[200,404]);
+            if(rel.status===200&&rel.data?.data){
+              const st=rel.data.data.attributes?.assetDeliveryState?.state;
+              if(st==='COMPLETE'){console.log('SUB_REVIEW_SCREENSHOT=ALREADY_COMPLETE');return}
+              await req(tok,'DELETE','/v1/subscriptionAppStoreReviewScreenshots/'+rel.data.data.id,null,[204]);
+            }
+            const made=await req(tok,'POST','/v1/subscriptionAppStoreReviewScreenshots',{data:{type:'subscriptionAppStoreReviewScreenshots',attributes:{fileName:'EventBooth-Paywall-Pro.jpg',fileSize:bytes.length},relationships:{subscription:{data:{type:'subscriptions',id:process.env.SUB_ID}}}}},[201]);
+            await uploadOps(made.data.data,bytes);
+            await req(tok,'PATCH','/v1/subscriptionAppStoreReviewScreenshots/'+made.data.data.id,{data:{type:'subscriptionAppStoreReviewScreenshots',id:made.data.data.id,attributes:{uploaded:true}}},[200]);
+            await waitAsset(tok,'/v1/subscriptionAppStoreReviewScreenshots/'+made.data.data.id+'?fields%5BsubscriptionAppStoreReviewScreenshots%5D=fileName,assetDeliveryState');
+            console.log('SUB_REVIEW_SCREENSHOT=COMPLETE');
+          }
+          (async()=>{
+            const gql=createGraphqlClient({accessToken:process.env.EXPO_TOKEN,sessionSecret:null});
+            const account=await getOwnerAccountForProjectIdAsync(gql,process.env.OX_EAS_PROJECT_ID);
+            const frag=await getAscApiKeyForAppSubmissionsAsync(gql,{account,projectName:process.env.OX_PROJECT_SLUG,bundleIdentifier:process.env.OX_BUNDLE_ID});
+            const key=await AppStoreConnectApiKeyQuery.getByIdAsync(gql,frag.id),tok=jwtFor(key);
+            const bytes=fs.readFileSync('/tmp/eventbooth-paywall.jpg');
+            await ensureIapShot(tok,bytes);
+            await ensureSubShot(tok,bytes);
+            await sleep(3000);
+            const iap=await req(tok,'GET','/v2/inAppPurchases/'+process.env.IAP_ID+'?fields%5BinAppPurchases%5D=name,productId,state,reviewNote');
+            const sub=await req(tok,'GET','/v1/subscriptions/'+process.env.SUB_ID+'?fields%5Bsubscriptions%5D=name,productId,state,reviewNote');
+            console.log('IAP_STATE='+iap.data.data.attributes.state);
+            console.log('SUB_STATE='+sub.data.data.attributes.state);
+            console.log('STOREKIT_REVIEW_METADATA=PASS');
+          })().catch(e=>{console.error('STOREKIT_REVIEW_METADATA=FAIL');console.error(e.stack||e.message);process.exit(1)})
+          NODE
+          node /tmp/storekit.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: EventBooth-StoreKit-review-screenshot
+          path: /tmp/eventbooth-paywall.jpg
+          retention-days: 30
