@@ -1,0 +1,27 @@
+name: Event Booth ASC full setup
+on:
+  push:
+    branches: [eventbooth-asc-internal]
+    paths:
+      - ".github/workflows/eventbooth-asc-full-setup.yml"
+      - "internal/eventbooth/asc_full_setup.cjs"
+permissions:
+  contents: read
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      OX_EAS_PROJECT_ID: "a8ec463b-a530-41c9-af1f-c5499359f881"
+      OX_PROJECT_SLUG: "ox-invoice"
+      OX_BUNDLE_ID: "com.operatorx.oxinvoice"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "24" }
+      - run: |
+          set -euo pipefail
+          mkdir -p /tmp/easlib
+          npm install --prefix /tmp/easlib eas-cli@latest --ignore-scripts --no-audit --no-fund >/dev/null
+      - run: node internal/eventbooth/asc_full_setup.cjs
