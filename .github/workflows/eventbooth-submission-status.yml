@@ -1,0 +1,59 @@
+name: Event Booth submission status
+
+on:
+  push:
+    branches: [eventbooth-asc-internal]
+    paths:
+      - ".github/workflows/eventbooth-submission-status.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Check latest Event Booth submissions
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/eventbooth-status
+          mkdir -p /tmp/eventbooth-status
+          cd /tmp/eventbooth-status
+          cat > app.json <<'JSON'
+          {
+            "expo": {
+              "name": "Event Booth",
+              "slug": "eventbooth",
+              "owner": "operatorx",
+              "version": "1.0.0",
+              "ios": {
+                "bundleIdentifier": "com.operatorx.eventbooth",
+                "buildNumber": "2",
+                "supportsTablet": true
+              },
+              "extra": {
+                "eas": {
+                  "projectId": "9753c8e1-2a24-412c-af5a-adb6c10ec789"
+                }
+              }
+            }
+          }
+          JSON
+          cat > package.json <<'JSON'
+          {"name":"eventbooth-status","version":"1.0.0","private":true}
+          JSON
+          npx --yes eas-cli@latest submission:list --platform ios --limit 10 --json | tee /tmp/eventbooth-submission-status.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: EventBooth-submission-status
+          path: /tmp/eventbooth-submission-status.json
+          if-no-files-found: warn
+          retention-days: 7
