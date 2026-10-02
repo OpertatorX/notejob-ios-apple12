@@ -1,0 +1,39 @@
+name: Event Booth RC8 final source export
+on:
+  push:
+    branches: [eventbooth-asc-internal]
+    paths: [".github/workflows/eventbooth-rc8-source-export-final.yml"]
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct current RC8 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/eventbooth-src
+          rm -rf "$ROOT" /tmp/eventbooth-rc8-current.tar.gz
+          mkdir -p "$ROOT"
+          cat internal/eventbooth/chunks/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/base.tgz
+          tar -xzf /tmp/base.tgz -C "$ROOT"
+          cp internal/eventbooth/overrides/CameraController.swift "$ROOT/EventBooth/Services/CameraController.swift"
+          cat internal/eventbooth/rc2/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/rc2.tgz
+          tar -xzf /tmp/rc2.tgz -C "$ROOT"
+          cat internal/eventbooth/rc4patch/part*.txt > /tmp/rc4.patch
+          (cd "$ROOT" && patch --batch -p1 < /tmp/rc4.patch)
+          python3 internal/eventbooth/rc4hotfix.py
+          for n in 5 6 7; do
+            (cd "$ROOT" && patch --batch -p1 < "$GITHUB_WORKSPACE/internal/eventbooth/rc$n.patch")
+          done
+          python3 internal/eventbooth/rc8hotfix.py
+          tar -czf /tmp/eventbooth-rc8-current.tar.gz -C "$ROOT" .
+          echo "RC8_SOURCE_EXPORT=PASS"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EventBooth-RC8-current-source
+          path: /tmp/eventbooth-rc8-current.tar.gz
+          retention-days: 7
