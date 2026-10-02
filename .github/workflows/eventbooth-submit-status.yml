@@ -1,0 +1,27 @@
+name: Event Booth submission status
+on:
+  push:
+    branches: [eventbooth-asc-internal]
+    paths: [".github/workflows/eventbooth-submit-status.yml"]
+permissions:
+  contents: read
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - uses: actions/setup-node@v4
+        with: { node-version: "24" }
+      - run: |
+          set -euo pipefail
+          mkdir -p /tmp/eventbooth-eas
+          cd /tmp/eventbooth-eas
+          cat > app.json <<'JSON'
+          {"expo":{"name":"Event Booth","slug":"eventbooth","owner":"operatorx","version":"1.0.0","ios":{"bundleIdentifier":"com.operatorx.eventbooth","buildNumber":"2"},"extra":{"eas":{"projectId":"9753c8e1-2a24-412c-af5a-adb6c10ec789"}}}}
+          JSON
+          cat > package.json <<'JSON'
+          {"name":"eventbooth-status","version":"1.0.0","private":true}
+          JSON
+          npx --yes eas-cli@latest submit:view 665caf32-9672-4fb8-85ef-296b3581b447 --json
