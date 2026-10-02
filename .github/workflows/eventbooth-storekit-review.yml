@@ -133,8 +133,18 @@ jobs:
             await ensureIapShot(tok,bytes);
             await ensureSubShot(tok,bytes);
             await sleep(3000);
-            const iap=await req(tok,'GET','/v2/inAppPurchases/'+process.env.IAP_ID+'?fields%5BinAppPurchases%5D=name,productId,state,reviewNote');
+            const iap=await req(tok,'GET','/v2/inAppPurchases/'+process.env.IAP_ID+'?include=versions,inAppPurchaseAvailability&fields%5BinAppPurchases%5D=name,productId,state,reviewNote,familySharable,versions,inAppPurchaseAvailability&fields%5BinAppPurchaseVersions%5D=version,state&fields%5BinAppPurchaseAvailabilities%5D=availableInNewTerritories');
             const sub=await req(tok,'GET','/v1/subscriptions/'+process.env.SUB_ID+'?fields%5Bsubscriptions%5D=name,productId,state,reviewNote');
+            console.log('IAP_DETAIL='+JSON.stringify(iap.data));
+            const versions=(iap.data.included||[]).filter(x=>x.type==='inAppPurchaseVersions');
+            for(const v of versions){
+              const vl=await req(tok,'GET','/v1/inAppPurchaseVersions/'+v.id+'/localizations?fields%5BinAppPurchaseLocalizations%5D=locale,name,description&limit=50');
+              console.log('IAP_VERSION='+v.id+'|'+JSON.stringify(v.attributes)+'|LOCS='+JSON.stringify(vl.data.data?.map(x=>x.attributes)||[]));
+            }
+            const av=await req(tok,'GET','/v2/inAppPurchases/'+process.env.IAP_ID+'/inAppPurchaseAvailability?fields%5BinAppPurchaseAvailabilities%5D=availableInNewTerritories',null,[200,404]);
+            console.log('IAP_AVAILABILITY='+JSON.stringify(av.data));
+            const ps=await req(tok,'GET','/v2/inAppPurchases/'+process.env.IAP_ID+'/iapPriceSchedule',null,[200,404]);
+            console.log('IAP_PRICE_SCHEDULE='+(ps.status===200?'PRESENT':'MISSING'));
             console.log('IAP_STATE='+iap.data.data.attributes.state);
             console.log('SUB_STATE='+sub.data.data.attributes.state);
             console.log('STOREKIT_REVIEW_METADATA=PASS');
