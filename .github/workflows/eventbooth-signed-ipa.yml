@@ -48,6 +48,18 @@ jobs:
           gunzip -c /tmp/eventbooth-rc3.patch.gz > /tmp/eventbooth-rc3.patch
           cd /tmp/eventbooth-src
           patch --batch -p4 < /tmp/eventbooth-rc3.patch
+
+          # Swift 6: AVAudioRecorderDelegate is unnecessary here and its Obj-C
+          # callback crosses the MainActor boundary. Recording is stopped explicitly.
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/eventbooth-src/EventBooth/Services/AudioRecorderService.swift')
+          s=p.read_text()
+          s=s.replace('final class AudioRecorderService: NSObject, ObservableObject, AVAudioRecorderDelegate {','final class AudioRecorderService: NSObject, ObservableObject {')
+          s=s.replace('        recorder.delegate = self\\n','')
+          s=s.replace('''\\n  func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {\\n    guard isRecording else { return }\\n    stop()\\n  }\\n''','')
+          p.write_text(s)
+          PY
           cd "$GITHUB_WORKSPACE"
 
           # Apple requires a complete iOS AppIcon catalog + CFBundleIconName.
