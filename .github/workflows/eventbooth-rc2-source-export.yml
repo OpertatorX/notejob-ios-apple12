@@ -1,0 +1,31 @@
+name: Event Booth RC2 source export
+on:
+  push:
+    branches: [eventbooth-asc-internal]
+    paths: [".github/workflows/eventbooth-rc2-source-export.yml"]
+permissions: { contents: read }
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct current RC2 source
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/eventbooth-src
+          mkdir -p /tmp/eventbooth-src
+          cat internal/eventbooth/chunks/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/base.tar.gz
+          echo "8a8d2094865775cdd5f1f6b302d527fbd2fda02008bed437706451fb83ee9cd2  /tmp/base.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/base.tar.gz -C /tmp/eventbooth-src
+          cp internal/eventbooth/overrides/CameraController.swift /tmp/eventbooth-src/EventBooth/Services/CameraController.swift
+          cat internal/eventbooth/rc2/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/rc2.tar.gz
+          echo "6ce64b55c2cbaaffcf43b6bf939d4368158ebf28ede0697f01c46e3913161868  /tmp/rc2.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/rc2.tar.gz -C /tmp/eventbooth-src
+          tar -czf /tmp/EventBooth-RC2-current-source.tar.gz -C /tmp/eventbooth-src .
+          sha256sum /tmp/EventBooth-RC2-current-source.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EventBooth-RC2-current-source
+          path: /tmp/EventBooth-RC2-current-source.tar.gz
+          retention-days: 7
