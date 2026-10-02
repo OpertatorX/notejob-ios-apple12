@@ -1,4 +1,4 @@
-name: Event Booth RC6 final build 8 signed IPA
+name: Event Booth RC7 final build 9 signed IPA
 
 on:
   push:
@@ -58,13 +58,15 @@ jobs:
           patch --batch -p1 < /tmp/eventbooth-rc5.patch
           cat "$GITHUB_WORKSPACE/internal/eventbooth/rc6.patch" > /tmp/eventbooth-rc6.patch
           patch --batch -p1 < /tmp/eventbooth-rc6.patch
+          cat "$GITHUB_WORKSPACE/internal/eventbooth/rc7.patch" > /tmp/eventbooth-rc7.patch
+          patch --batch -p1 < /tmp/eventbooth-rc7.patch
           python3 - <<'PY'
           from pathlib import Path
           p=Path('/tmp/eventbooth-src/project.yml')
-          s=p.read_text().replace('CURRENT_PROJECT_VERSION: 5','CURRENT_PROJECT_VERSION: 8')
+          s=p.read_text().replace('CURRENT_PROJECT_VERSION: 5','CURRENT_PROJECT_VERSION: 9')
           p.write_text(s)
           PY
-          grep -q 'CURRENT_PROJECT_VERSION: 8' /tmp/eventbooth-src/project.yml
+          grep -q 'CURRENT_PROJECT_VERSION: 9' /tmp/eventbooth-src/project.yml
           test "$(grep -c ' = ' /tmp/eventbooth-src/EventBooth/Resources/fr.lproj/Localizable.strings)" -eq 158
           test "$(grep -c ' = ' /tmp/eventbooth-src/EventBooth/Resources/en.lproj/Localizable.strings)" -eq 158
           cd "$GITHUB_WORKSPACE"
@@ -325,7 +327,7 @@ jobs:
           APP="$(find /tmp/eventbooth-ipa-check/Payload -maxdepth 1 -name '*.app' -type d -print -quit)"
           test -n "$APP"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist" | grep -qx "com.operatorx.eventbooth"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Info.plist" | grep -qx "8"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Info.plist" | grep -qx "9"
           /usr/libexec/PlistBuddy -c "Print :UIUserInterfaceStyle" "$APP/Info.plist" | grep -qx "Light"
           /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Info.plist" | grep -qx "1.0.0"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIconName" "$APP/Info.plist" | grep -qx "AppIcon"
@@ -352,7 +354,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: EventBooth-IPA-build8
+          name: EventBooth-IPA-build9
           path: |
             /tmp/eventbooth-src/artifacts/export/*.ipa
             /tmp/eventbooth-src/artifacts/IPA_SHA256.txt
