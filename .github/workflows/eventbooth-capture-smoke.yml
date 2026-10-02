@@ -1,4 +1,4 @@
-name: Event Booth capture smoke
+name: Event Booth RC4 capture
 
 on:
   push:
@@ -6,11 +6,28 @@ on:
       - eventbooth-asc-internal
     paths:
       - ".github/workflows/eventbooth-capture-smoke.yml"
+      - "internal/eventbooth/capture_rc4.sh"
+      - "internal/eventbooth/rc4hotfix.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  smoke:
+  capture:
     runs-on: macos-26
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
-      - name: Smoke
-        run: echo "CAPTURE_SMOKE=PASS"
+      - name: Capture audited RC4
+        shell: bash
+        run: bash internal/eventbooth/capture_rc4.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: EventBooth-RC4-reference-captures
+          path: |
+            /tmp/ebshots/*.png
+            /tmp/ebshots/build.log
+          if-no-files-found: warn
+          retention-days: 30
