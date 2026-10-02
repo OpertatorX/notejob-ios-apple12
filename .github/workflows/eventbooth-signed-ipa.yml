@@ -2,7 +2,7 @@ name: Event Booth V4 audited build 4 IPA
 
 on:
   push:
-    branches: [eventbooth-asc-internal]
+    branches: [eventbooth-audit-v4]
     paths:
       - ".github/workflows/eventbooth-signed-ipa.yml"
 
