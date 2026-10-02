@@ -1,0 +1,394 @@
+gh free storage. Free up space before saving more memories.";
++"purchase.unavailable" = "App Store product unavailable";
++"purchase.verifyFailed" = "Purchase verification failed";
++"purchase.pending" = "Purchase pending";
+diff -ruN '--exclude=ScreenshotWedding.jpg' rc2src/EventBooth/Resources/fr.lproj/Localizable.strings rc4_work/EventBooth/Resources/fr.lproj/Localizable.strings
+--- rc2src/EventBooth/Resources/fr.lproj/Localizable.strings	2026-10-02 08:43:56.000000000 +0000
++++ rc4_work/EventBooth/Resources/fr.lproj/Localizable.strings	2026-10-02 12:02:20.000000000 +0000
+@@ -148,3 +148,11 @@
+ "paywall.year" = "an";
+ "paywall.storeUnavailable" = "App Store momentanément indisponible";
+ "paywall.footer" = "Achats gérés par l’App Store. Aucun compte Event Booth requis.";
++
++"booth.testmode" = "MODE ESSAI · %d SOUVENIR(S) RESTANT(S)";
++"settings.sound" = "Retour haptique et sons";
++"settings.pin.help" = "PIN par défaut : 2727. Modifiez-le avant l’événement.";
++"error.storage" = "Stockage insuffisant. Libérez de l’espace avant d’enregistrer de nouveaux souvenirs.";
++"purchase.unavailable" = "Produit App Store indisponible";
++"purchase.verifyFailed" = "La vérification de l’achat a échoué";
++"purchase.pending" = "Achat en attente";
+diff -ruN '--exclude=ScreenshotWedding.jpg' rc2src/EventBooth/Services/AudioRecorderService.swift rc4_work/EventBooth/Services/AudioRecorderService.swift
+--- rc2src/EventBooth/Services/AudioRecorderService.swift	2026-10-02 08:50:50.000000000 +0000
++++ rc4_work/EventBooth/Services/AudioRecorderService.swift	2026-10-02 12:02:20.000000000 +0000
+@@ -3,73 +3,111 @@
+ import Foundation
+ 
+ @MainActor
+-final class AudioRecorderService: NSObject, ObservableObject, AVAudioRecorderDelegate {
++final class AudioRecorderService: NSObject, ObservableObject {
+   @Published var isRecording = false
+   @Published var duration: TimeInterval = 0
+   @Published var level: Float = 0
+   @Published var permissionDenied = false
+ 
+   private var recorder: AVAudioRecorder?
+-  private var timer: Timer?
++  private var meterTask: Task<Void, Never>?
+   private var completion: ((URL?, TimeInterval) -> Void)?
+-  private var startedAt: Date?
+ 
+-  func requestPermission(_ completion: @escaping (Bool) -> Void) {
+-    AVAudioSession.sharedInstance().requestRecordPermission { granted in
+-      DispatchQueue.main.async {
+-        self.permissionDenied = !granted
+-        completion(granted)
++  private func requestPermission() async -> Bool {
++    await withCheckedContinuation { continuation in
++      AVAudioApplication.requestRecordPermission { granted in
++        continuation.resume(returning: granted)
+       }
+     }
+   }
+ 
+   func start(completion: @escaping (URL?, TimeInterval) -> Void) {
+-    requestPermission { [weak self] granted in
+-      guard let self, granted else { return }
+-      do {
+-        let session = AVAudioSession.sharedInstance()
+-        try session.setCategory(
+-          .playAndRecord, mode: .spokenAudio, options: [.defaultToSpeaker, .allowBluetooth])
+-        try session.setActive(true)
+-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(
+-          "voice-\(UUID().uuidString).m4a")
+-        let settings: [String: Any] = [
+-          AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+-          AVSampleRateKey: 44_100,
+-          AVNumberOfChannelsKey: 1,
+-          AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
+-        ]
+-        let recorder = try AVAudioRecorder(url: url, settings: settings)
+-        recorder.delegate = self
+-        recorder.isMeteringEnabled = true
+-        recorder.record()
+-        self.recorder = recorder
+-        self.completion = completion
+-        self.startedAt = .now
+-        self.isRecording = true
+-        self.duration = 0
+-        self.timer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { [weak self] _ in
+-          guard let self, let recorder = self.recorder else { return }
++    self.completion = completion
++
++    Task { @MainActor [weak self] in
++      guard let self else { return }
++      let granted = await self.requestPermission()
++      self.permissionDenied = !granted
++      guard granted else {
++        self.completion = nil
++        return
++      }
++      self.beginRecording()
++    }
++  }
++
++  private func beginRecording() {
++    do {
++      let session = AVAudioSession.sharedInstance()
++      try session.setCategory(
++        .playAndRecord,
++        mode: .spokenAudio,
++        options: [.defaultToSpeaker, .allowBluetoothHFP]
++      )
++      try session.setActive(true)
++
++      let url = FileManager.default.temporaryDirectory.appendingPathComponent(
++        "voice-\(UUID().uuidString).m4a"
++      )
++
++      let settings: [String: Any] = [
++        AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
++        AVSampleRateKey: 44_100,
++        AVNumberOfChannelsKey: 1,
++        AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
++      ]
++
++      let recorder = try AVAudioRecorder(url: url, settings: settings)
++      recorder.isMeteringEnabled = true
++      recorder.prepareToRecord()
++      guard recorder.record() else {
++        let callback = completion
++        completion = nil
++        callback?(nil, 0)
++        return
++      }
++
++      self.recorder = recorder
++      isRecording = true
++      duration = 0
++      level = -60
++
++      meterTask?.cancel()
++      meterTask = Task { @MainActor [weak self] in
++        while let self, self.isRecording, !Task.isCancelled {
++          guard let recorder = self.recorder else { break }
+           recorder.updateMeters()
+           self.duration = recorder.currentTime
+           self.level = recorder.averagePower(forChannel: 0)
++          try? await Task.sleep(for: .milliseconds(80))
+         }
+-      } catch {
+-        completion(nil, 0)
+       }
++    } catch {
++      let callback = completion
++      completion = nil
++      callback?(nil, 0)
+     }
+   }
+ 
+   func stop() {
+     guard let recorder else { return }
++
+     let url = recorder.url
+     let value = recorder.currentTime
++
+     recorder.stop()
+-    timer?.invalidate()
+-    timer = nil
++    meterTask?.cancel()
++    meterTask = nil
++    self.recorder = nil
+     isRecording = false
+     duration = value
+-    try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
++    level = -60
++
++    try? AVAudioSession.sharedInstance().setActive(
++      false,
++      options: .notifyOthersOnDeactivation
++    )
++
+     let callback = completion
+     completion = nil
+     callback?(url, value)
+diff -ruN '--exclude=ScreenshotWedding.jpg' rc2src/EventBooth/Services/PurchaseManager.swift rc4_work/EventBooth/Services/PurchaseManager.swift
+--- rc2src/EventBooth/Services/PurchaseManager.swift	2026-10-02 08:48:27.000000000 +0000
++++ rc4_work/EventBooth/Services/PurchaseManager.swift	2026-10-02 12:02:20.000000000 +0000
+@@ -65,7 +65,7 @@
+ 
+   func purchaseEventPass() async -> Bool {
+     guard let eventPass else {
+-      lastError = "Store product unavailable"
++      lastError = String(localized: "purchase.unavailable")
+       return false
+     }
+     return await purchase(eventPass)
+@@ -73,7 +73,7 @@
+ 
+   func purchasePro() async -> Bool {
+     guard let proAnnual else {
+-      lastError = "Store product unavailable"
++      lastError = String(localized: "purchase.unavailable")
+       return false
+     }
+     let ok = await purchase(proAnnual)
+@@ -89,14 +89,14 @@
+       switch result {
+       case .success(let verification):
+         guard case .verified(let transaction) = verification else {
+-          lastError = "Purchase verification failed"
++          lastError = String(localized: "purchase.verifyFailed")
+           return false
+         }
+         await transaction.finish()
+         lastError = nil
+         return true
+       case .pending:
+-        lastError = "Purchase pending"
++        lastError = String(localized: "purchase.pending")
+         return false
+       case .userCancelled:
+         return false
+diff -ruN '--exclude=ScreenshotWedding.jpg' rc2src/EventBooth/Stores/EventStore.swift rc4_work/EventBooth/Stores/EventStore.swift
+--- rc2src/EventBooth/Stores/EventStore.swift	2026-10-02 08:48:27.000000000 +0000
++++ rc4_work/EventBooth/Stores/EventStore.swift	2026-10-02 12:02:20.000000000 +0000
+@@ -11,7 +11,7 @@
+   var errorDescription: String? {
+     switch self {
+     case .insufficientStorage:
+-      return "Not enough free storage. Free up space before saving more memories."
++      return String(localized: "error.storage")
+     }
+   }
+ }
+@@ -40,6 +40,10 @@
+     try? fm.createDirectory(at: mediaRoot, withIntermediateDirectories: true)
+     excludeMediaFromBackup()
+     loadAll()
++
++    if EBScreenshotMode.isEnabled {
++      prepareScreenshotFixture()
++    }
+   }
+ 
+   var mediaRoot: URL { baseURL.appendingPathComponent("Media", isDirectory: true) }
+@@ -53,6 +57,17 @@
+   }
+   func memoryCount(for eventID: UUID) -> Int { memories.filter { $0.eventID == eventID }.count }
+ 
++
++  static let freeTestCaptureLimit = 3
++
++  func remainingFreeCaptures(for eventID: UUID) -> Int {
++    max(0, Self.freeTestCaptureLimit - memoryCount(for: eventID))
++  }
++
++  func canUseFreeTrial(for eventID: UUID) -> Bool {
++    remainingFreeCaptures(for: eventID) > 0
++  }
++
+   func createEvent(_ event: BoothEvent, coverData: Data?) -> BoothEvent {
+     var copy = event
+     let optimizedCover = coverData.flatMap { optimizedJPEG($0, maxDimension: 2200, quality: 0.88) }
+@@ -70,6 +85,14 @@
+     events[index] = event
+   }
+ 
++  func updateEventCover(eventID: UUID, data: Data) throws {
++    try ensureWritableSpace(minimumBytes: 25 * 1024 * 1024)
++    guard let index = events.firstIndex(where: { $0.id == eventID }) else { return }
++    guard let optimized = optimizedJPEG(data, maxDimension: 2200, quality: 0.88) else { return }
++    let path = try writeData(optimized, eventID: eventID, filename: "cover.jpg")
++    events[index].coverPath = path
++  }
++
+   func unlockEvent(_ id: UUID) {
+     guard let index = events.firstIndex(where: { $0.id == id }) else { return }
+     events[index].isUnlocked = true
+@@ -176,6 +199,114 @@
+     return values?.volumeAvailableCapacityForImportantUsage
+   }
+ 
++
++  private func prepareScreenshotFixture() {
++    let eventID = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
++
++    if !events.contains(where: { $0.id == eventID }) {
++      let formatter = DateFormatter()
++      formatter.calendar = Calendar(identifier: .gregorian)
++      formatter.locale = Locale(identifier: "en_US_POSIX")
++      formatter.dateFormat = "yyyy-MM-dd"
++      let date = formatter.date(from: "2027-07-18") ?? .now
++
++      let coverData: Data? = {
++        if let url = Bundle.main.url(forResource: "ScreenshotWedding", withExtension: "jpg") {
++          return try? Data(contentsOf: url)
++        }
++        return screenshotFallbackCover().jpegData(compressionQuality: 0.92)
++      }()
++
++      let created = createEvent(
++        BoothEvent(
++          id: eventID,
++          name: "Emma & Lucas",
++          date: date,
++          occasion: .wedding,
++          theme: .classic,
++          features: .init(),
++          isUnlocked: true
++        ),
++        coverData: coverData
++      )
++
++      let coverPath = created.coverPath
++      var fixture: [EventMemory] = []
++      for index in 0..<143 {
++        let kind: MemoryKind
++        switch index % 10 {
++        case 0: kind = .video
++        case 1: kind = .voice
++        case 2: kind = .note
++        default: kind = .photo
++        }
++
++        fixture.append(
++          EventMemory(
++            eventID: eventID,
++            kind: kind,
++            createdAt: date.addingTimeInterval(TimeInterval(index * 73)),
++            filePath: kind == .photo ? coverPath : nil,
++            thumbnailPath: (kind == .photo || kind == .video) ? coverPath : nil,
++            guestName: kind == .note ? ["Camille", "Louis", "Chloé", "Arthur"][index % 4] : nil,
++            message: kind == .note ? [
++              "Une journée magnifique. On vous souhaite tout le bonheur du monde.",
++              "Merci pour cette soirée inoubliable ♡",
++              "À votre nouvelle aventure !",
++              "Des souvenirs qu’on gardera longtemps."
++            ][index % 4] : nil,
++            duration: (kind == .voice || kind == .video) ? Double(12 + index % 41) : nil,
++            isFavorite: index % 17 == 0
++          )
++        )
++      }
++      memories = fixture
++    }
++
++    settings.adminPIN = "2727"
++    settings.showEventName = true
++    settings.autoReturnSeconds = 5
++
++    activeBoothEventID = nil
++  }
++
++  private func screenshotFallbackCover() -> UIImage {
++    let size = CGSize(width: 1800, height: 1200)
++    let renderer = UIGraphicsImageRenderer(size: size)
++    return renderer.image { ctx in
++      let colors = [
++        UIColor(red: 0.16, green: 0.13, blue: 0.10, alpha: 1).cgColor,
++        UIColor(red: 0.50, green: 0.35, blue: 0.22, alpha: 1).cgColor,
++        UIColor(red: 0.88, green: 0.68, blue: 0.43, alpha: 1).cgColor
++      ] as CFArray
++      let locations: [CGFloat] = [0, 0.55, 1]
++      let gradient = CGGradient(
++        colorsSpace: CGColorSpaceCreateDeviceRGB(),
++        colors: colors,
++        locations: locations
++      )!
++      ctx.cgContext.drawLinearGradient(
++        gradient,
++        start: CGPoint(x: 0, y: size.height),
++        end: CGPoint(x: size.width, y: 0),
++        options: []
++      )
++
++      for i in 0..<28 {
++        let x = CGFloat((i * 137) % 1700)
++        let y = CGFloat((i * 211) % 1050)
++        let d = CGFloat(80 + (i % 5) * 34)
++        UIColor.white.withAlphaComponent(i % 3 == 0 ? 0.16 : 0.07).setFill()
++        ctx.cgContext.fillEllipse(in: CGRect(x: x, y: y, width: d, height: d))
++      }
++
++      UIColor.black.withAlphaComponent(0.20).setFill()
++      ctx.cgContext.fillEllipse(in: CGRect(x: 500, y: 380, width: 360, height: 560))
++      UIColor.black.withAlphaComponent(0.14).setFill()
++      ctx.cgContext.fillEllipse(in: CGRect(x: 820, y: 430, width: 330, height: 520))
++    }
++  }
++
+   private func ensureWritableSpace(minimumBytes: Int64 = 250 * 1024 * 1024) throws {
+     if let available = availableStorageBytes(), available < minimumBytes {
+       throw EventStoreError.insufficientStorage
+diff -ruN '--exclude=ScreenshotWedding.jpg' rc2src/project.yml rc4_work/project.yml
+--- rc2src/project.yml	2026-10-02 08:44:05.000000000 +0000
++++ rc4_work/project.yml	2026-10-02 12:48:20.613457247 +0000
+@@ -9,7 +9,7 @@
+     SWIFT_VERSION: 6.0
+     SWIFT_STRICT_CONCURRENCY: minimal
+     DEVELOPMENT_TEAM: ""
+-    CURRENT_PROJECT_VERSION: 3
++    CURRENT_PROJECT_VERSION: 4
+     MARKETING_VERSION: 1.0.0
+     ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+     TARGETED_DEVICE_FAMILY: "1,2"
