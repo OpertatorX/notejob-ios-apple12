@@ -1,0 +1,31 @@
+name: Event Booth inspect RC7 booth source
+on:
+  push:
+    branches: [eventbooth-asc-internal]
+    paths: [".github/workflows/eventbooth-inspect-rc7-source.yml"]
+permissions: { contents: read }
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/eventbooth-src
+          rm -rf "$ROOT"; mkdir -p "$ROOT"
+          cat internal/eventbooth/chunks/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/base.tgz
+          tar -xzf /tmp/base.tgz -C "$ROOT"
+          cp internal/eventbooth/overrides/CameraController.swift "$ROOT/EventBooth/Services/CameraController.swift"
+          cat internal/eventbooth/rc2/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/rc2.tgz
+          tar -xzf /tmp/rc2.tgz -C "$ROOT"
+          cat internal/eventbooth/rc4patch/part*.txt > /tmp/rc4.patch
+          (cd "$ROOT" && patch --batch -p1 < /tmp/rc4.patch)
+          python3 internal/eventbooth/rc4hotfix.py
+          for n in 5 6 7; do
+            (cd "$ROOT" && patch --batch -p1 < "$GITHUB_WORKSPACE/internal/eventbooth/rc$n.patch")
+          done
+          echo "===== RC7 BoothHomeView.swift ====="
+          sed -n '1,380p' "$ROOT/EventBooth/Features/Booth/BoothHomeView.swift"
+          echo "===== RC7 DesignSystem action card ====="
+          grep -n -A100 -B10 "struct EBGlassActionCard" "$ROOT/EventBooth/DesignSystem/DesignSystem.swift"
