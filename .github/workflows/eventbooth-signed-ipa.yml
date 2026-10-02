@@ -1,4 +1,4 @@
-name: Event Booth RC4 build 4 signed IPA
+name: Event Booth RC4 final build 5 signed IPA
 
 on:
   push:
@@ -52,7 +52,8 @@ jobs:
             -o /tmp/eventbooth-src/EventBooth/Resources/ScreenshotWedding.jpg
           test -s /tmp/eventbooth-src/EventBooth/Resources/ScreenshotWedding.jpg
           file /tmp/eventbooth-src/EventBooth/Resources/ScreenshotWedding.jpg | grep -qi 'JPEG image data'
-          grep -q 'CURRENT_PROJECT_VERSION: 4' /tmp/eventbooth-src/project.yml
+          python3 "$GITHUB_WORKSPACE/internal/eventbooth/rc4hotfix.py"
+          grep -q 'CURRENT_PROJECT_VERSION: 5' /tmp/eventbooth-src/project.yml
           test "$(grep -c ' = ' /tmp/eventbooth-src/EventBooth/Resources/fr.lproj/Localizable.strings)" -eq 157
           test "$(grep -c ' = ' /tmp/eventbooth-src/EventBooth/Resources/en.lproj/Localizable.strings)" -eq 157
           cd "$GITHUB_WORKSPACE"
@@ -249,6 +250,11 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO \
             build | tee /tmp/eventbooth-simulator-release.log
+          if grep -E '/tmp/eventbooth-src/EventBooth/.*: warning:' /tmp/eventbooth-simulator-release.log; then
+            echo "SOURCE_WARNING_GATE=FAIL"
+            exit 31
+          fi
+          echo "SOURCE_WARNING_GATE=PASS"
 
       - name: Archive with App Store profile
         working-directory: /tmp/eventbooth-src
@@ -267,6 +273,11 @@ jobs:
             CODE_SIGN_IDENTITY="Apple Distribution" \
             PROVISIONING_PROFILE_SPECIFIER="$EVENTBOOTH_PROFILE_NAME" \
             archive | tee /tmp/eventbooth-archive.log
+          if grep -E '/tmp/eventbooth-src/EventBooth/.*: warning:' /tmp/eventbooth-archive.log; then
+            echo "ARCHIVE_SOURCE_WARNING_GATE=FAIL"
+            exit 32
+          fi
+          echo "ARCHIVE_SOURCE_WARNING_GATE=PASS"
 
       - name: Export IPA
         working-directory: /tmp/eventbooth-src
@@ -299,7 +310,7 @@ jobs:
           APP="$(find /tmp/eventbooth-ipa-check/Payload -maxdepth 1 -name '*.app' -type d -print -quit)"
           test -n "$APP"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist" | grep -qx "com.operatorx.eventbooth"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Info.plist" | grep -qx "4"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Info.plist" | grep -qx "5"
           /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Info.plist" | grep -qx "1.0.0"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIconName" "$APP/Info.plist" | grep -qx "AppIcon"
           /usr/libexec/PlistBuddy -c "Print :ITSAppUsesNonExemptEncryption" "$APP/Info.plist" | grep -qx "false"
@@ -325,7 +336,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: EventBooth-IPA-build4
+          name: EventBooth-IPA-build5
           path: |
             /tmp/eventbooth-src/artifacts/export/*.ipa
             /tmp/eventbooth-src/artifacts/IPA_SHA256.txt
