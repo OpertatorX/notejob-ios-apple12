@@ -1,0 +1,89 @@
+name: Event Booth ASC live audit
+on:
+  push:
+    branches: [eventbooth-asc-internal]
+    paths: [".github/workflows/eventbooth-asc-audit.yml"]
+permissions: { contents: read }
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      OX_EAS_PROJECT_ID: "a8ec463b-a530-41c9-af1f-c5499359f881"
+      OX_PROJECT_SLUG: "ox-invoice"
+      OX_BUNDLE_ID: "com.operatorx.oxinvoice"
+    steps:
+      - uses: actions/setup-node@v4
+        with: { node-version: "24" }
+      - run: |
+          set -euo pipefail
+          mkdir -p /tmp/easlib
+          npm install --prefix /tmp/easlib eas-cli@latest --ignore-scripts --no-audit --no-fund >/dev/null
+      - name: Audit Event Booth in App Store Connect
+        run: |
+          set -euo pipefail
+          cat >/tmp/audit.cjs <<'NODE'
+          const crypto=require('crypto');
+          const E='/tmp/easlib/node_modules/eas-cli/build';
+          const {createGraphqlClient}=require(E+'/commandUtils/context/contextUtils/createGraphqlClient.js');
+          const {getOwnerAccountForProjectIdAsync}=require(E+'/project/projectUtils.js');
+          const {getAscApiKeyForAppSubmissionsAsync}=require(E+'/credentials/ios/api/GraphqlClient.js');
+          const {AppStoreConnectApiKeyQuery}=require(E+'/graphql/queries/AppStoreConnectApiKeyQuery.js');
+          const APP='6818422621';
+          function b64url(x){return Buffer.from(x).toString('base64url')}
+          function jwtFor(k){const n=Math.floor(Date.now()/1000),h={alg:'ES256',kid:k.keyIdentifier,typ:'JWT'},p={iss:k.issuerIdentifier,iat:n-5,exp:n+900,aud:'appstoreconnect-v1'};const s=b64url(JSON.stringify(h))+'.'+b64url(JSON.stringify(p));return s+'.'+crypto.sign('sha256',Buffer.from(s),{key:k.keyP8,dsaEncoding:'ieee-p1363'}).toString('base64url')}
+          async function req(tok,path,required=true){const r=await fetch('https://api.appstoreconnect.apple.com'+path,{headers:{Authorization:'Bearer '+tok}});const t=await r.text();let j={};try{j=t?JSON.parse(t):{}}catch{};if(!r.ok){console.log('HTTP_FAIL='+r.status+'|'+path); if(required) throw new Error(t.slice(0,1200)); return null}return j}
+          const rows=x=>Array.isArray(x?.data)?x.data:(x?.data?[x.data]:[]);
+          const a=x=>x?.attributes||{};
+          (async()=>{
+            const gql=createGraphqlClient({accessToken:process.env.EXPO_TOKEN,sessionSecret:null});
+            const account=await getOwnerAccountForProjectIdAsync(gql,process.env.OX_EAS_PROJECT_ID);
+            const frag=await getAscApiKeyForAppSubmissionsAsync(gql,{account,projectName:process.env.OX_PROJECT_SLUG,bundleIdentifier:process.env.OX_BUNDLE_ID});
+            const key=await AppStoreConnectApiKeyQuery.getByIdAsync(gql,frag.id),tok=jwtFor(key);
+            const app=await req(tok,'/v1/apps/'+APP+'?fields%5Bapps%5D=name,bundleId,sku,primaryLocale,contentRightsDeclaration,isOrEverWasMadeForKids');
+            console.log('APP='+JSON.stringify(a(app.data)));
+            const infos=rows(await req(tok,'/v1/apps/'+APP+'/appInfos?fields%5BappInfos%5D=state,appStoreAgeRating&limit=50'));
+            console.log('APPINFO_COUNT='+infos.length);
+            for(const info of infos){
+              console.log('APPINFO='+info.id+'|'+JSON.stringify(a(info)));
+              const locs=rows(await req(tok,'/v1/appInfos/'+info.id+'/appInfoLocalizations?fields%5BappInfoLocalizations%5D=locale,name,subtitle,privacyPolicyUrl&limit=50'));
+              for(const l of locs) console.log('INFO_LOC='+JSON.stringify(a(l)));
+              const age=await req(tok,'/v1/appInfos/'+info.id+'/ageRatingDeclaration?fields%5BageRatingDeclarations%5D=advertising,userGeneratedContent,messagingAndChat,socialMedia,unrestrictedWebAccess,ageRatingOverride,ageRatingOverrideV2',false);
+              console.log('AGE='+(age?.data?JSON.stringify(a(age.data)):'MISSING'));
+              for(const rel of ['primaryCategory','secondaryCategory']){
+                const cat=await req(tok,'/v1/appInfos/'+info.id+'/'+rel,false);
+                console.log(rel.toUpperCase()+'='+(cat?.data?.id||'MISSING'));
+              }
+            }
+            const vers=rows(await req(tok,'/v1/apps/'+APP+'/appStoreVersions?filter%5Bplatform%5D=IOS&filter%5BversionString%5D=1.0&fields%5BappStoreVersions%5D=versionString,appVersionState,releaseType,copyright,usesIdfa'));
+            if(!vers.length) throw new Error('version 1.0 missing');
+            const ver=vers[0]; console.log('VERSION='+ver.id+'|'+JSON.stringify(a(ver)));
+            const locs=rows(await req(tok,'/v1/appStoreVersions/'+ver.id+'/appStoreVersionLocalizations?fields%5BappStoreVersionLocalizations%5D=locale,description,keywords,marketingUrl,promotionalText,supportUrl&limit=50'));
+            for(const l of locs){
+              console.log('VERSION_LOC='+JSON.stringify({id:l.id,...a(l),description_len:(a(l).description||'').length}));
+              const sets=rows(await req(tok,'/v1/appStoreVersionLocalizations/'+l.id+'/appScreenshotSets?fields%5BappScreenshotSets%5D=screenshotDisplayType&limit=50'));
+              for(const s of sets){
+                const shots=rows(await req(tok,'/v1/appScreenshotSets/'+s.id+'/appScreenshots?fields%5BappScreenshots%5D=fileName,assetDeliveryState&limit=50'));
+                console.log('SCREENSET='+a(l).locale+'|'+a(s).screenshotDisplayType+'|'+shots.length+'|'+shots.map(x=>a(x).assetDeliveryState?.state||'?').join(','));
+              }
+              if(!sets.length) console.log('SCREENSET='+a(l).locale+'|NONE');
+            }
+            const build=await req(tok,'/v1/appStoreVersions/'+ver.id+'/build?fields%5Bbuilds%5D=version,processingState,expired,uploadedDate,usesNonExemptEncryption',false);
+            console.log('SELECTED_BUILD='+(build?.data?build.data.id+'|'+JSON.stringify(a(build.data)):'MISSING'));
+            const review=await req(tok,'/v1/appStoreVersions/'+ver.id+'/appStoreReviewDetail?fields%5BappStoreReviewDetails%5D=contactFirstName,contactLastName,contactPhone,contactEmail,demoAccountRequired,notes',false);
+            console.log('REVIEW='+(review?.data?JSON.stringify({...a(review.data),notes_len:(a(review.data).notes||'').length}):'MISSING'));
+            const ps=await req(tok,'/v1/apps/'+APP+'/appPriceSchedule',false);
+            console.log('PRICE_SCHEDULE='+(ps?.data?.id||'MISSING'));
+            const iaps=rows(await req(tok,'/v1/apps/'+APP+'/inAppPurchasesV2?fields%5BinAppPurchases%5D=name,productId,inAppPurchaseType,state&limit=200',false));
+            for(const x of iaps) console.log('IAP='+x.id+'|'+JSON.stringify(a(x)));
+            const groups=rows(await req(tok,'/v1/apps/'+APP+'/subscriptionGroups?fields%5BsubscriptionGroups%5D=referenceName&limit=100',false));
+            for(const g of groups){
+              console.log('SUB_GROUP='+g.id+'|'+JSON.stringify(a(g)));
+              const ss=rows(await req(tok,'/v1/subscriptionGroups/'+g.id+'/subscriptions?fields%5Bsubscriptions%5D=name,productId,subscriptionPeriod,state&limit=100',false));
+              for(const x of ss) console.log('SUB='+x.id+'|'+JSON.stringify(a(x)));
+            }
+            console.log('EVENTBOOTH_AUDIT=PASS');
+          })().catch(e=>{console.error('EVENTBOOTH_AUDIT=FAIL');console.error(e.stack||e.message);process.exit(1)})
+          NODE
+          node /tmp/audit.cjs
