@@ -1,0 +1,25 @@
+name: Event Booth inspect build2 booth source
+on:
+  push:
+    branches: [eventbooth-asc-internal]
+    paths:
+      - ".github/workflows/eventbooth-inspect-booth-source.yml"
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct build2 source and print Booth files
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/eventbooth-src
+          mkdir -p /tmp/eventbooth-src
+          cat internal/eventbooth/chunks/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/eventbooth-src.tar.gz
+          tar -xzf /tmp/eventbooth-src.tar.gz -C /tmp/eventbooth-src
+          echo "===== BoothHomeView.swift ====="
+          sed -n '1,360p' /tmp/eventbooth-src/EventBooth/Features/Booth/BoothHomeView.swift
+          echo "===== DesignSystem EBGlassActionCard ====="
+          grep -n -A90 -B8 "struct EBGlassActionCard" /tmp/eventbooth-src/EventBooth/DesignSystem/DesignSystem.swift
