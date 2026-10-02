@@ -32,6 +32,7 @@ jobs:
           python3 internal/eventbooth/rc8hotfix.py
           python3 internal/eventbooth/finalhotfix.py
           file "$ROOT/EventBooth/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
+          echo "ACTUAL_ICON_SHA=$(sha256sum "$ROOT/EventBooth/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png" | awk '{print $1}')"
           test "$(sha256sum "$ROOT/EventBooth/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png" | awk '{print $1}')" = "1b9108f943a84178108d6ec5da1f28b3d0c8da3e65d20db194a453bdf242c83f"
           cmp "$ROOT/EventBooth/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png" "$ROOT/EventBooth/Resources/Assets.xcassets/BrandMark.imageset/BrandMark.png"
           grep -q 'CURRENT_PROJECT_VERSION: 11' "$ROOT/project.yml"
