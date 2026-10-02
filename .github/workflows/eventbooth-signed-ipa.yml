@@ -51,6 +51,10 @@ jobs:
           echo "b79dd461d86225cfdd2403304e90dbeaef2b1f6a5d4343602a65834b04fc168e  /tmp/eventbooth-v4-fix1-overlay.tar.gz" | shasum -a 256 -c -
           tar -xzf /tmp/eventbooth-v4-fix1-overlay.tar.gz -C /tmp/eventbooth-src
 
+          cat internal/eventbooth/v4fix2/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/eventbooth-v4-fix2-overlay.tar.gz
+          echo "a1b302aa296a2b6b413a811e350ca6290e7be4a3dc8f1f8094de2a67cdf2ef38  /tmp/eventbooth-v4-fix2-overlay.tar.gz" | shasum -a 256 -c -
+          tar -xzf /tmp/eventbooth-v4-fix2-overlay.tar.gz -C /tmp/eventbooth-src
+
           # Apple requires a complete iOS AppIcon catalog + CFBundleIconName.
           ICONDIR=/tmp/eventbooth-src/EventBooth/Resources/Assets.xcassets/AppIcon.appiconset
           SRCICON="$ICONDIR/AppIcon-1024.png"
@@ -334,3 +338,5 @@ jobs:
 # V4 stable overlay retry
 
 # apply V4 compile fix overlay
+
+# V4 ForEach compile fix retry
