@@ -24,5 +24,18 @@ jobs:
           cat > package.json <<'JSON'
           {"name":"eventbooth-status","version":"1.0.0","private":true}
           JSON
-          npx --yes eas-cli@latest submit:view 665caf32-9672-4fb8-85ef-296b3581b447 --json
-# status check 2026-10-02 09:13 local
+          npx --yes eas-cli@latest submit:view 665caf32-9672-4fb8-85ef-296b3581b447 --json > /tmp/status.json
+          cat /tmp/status.json
+          node <<'NODE'
+          const fs=require('fs');
+          let s=fs.readFileSync('/tmp/status.json','utf8');
+          const i=s.indexOf('{'); if(i>0)s=s.slice(i);
+          const j=JSON.parse(s);
+          (async()=>{
+            for(let k=0;k<(j.logFiles||[]).length;k++){
+              const r=await fetch(j.logFiles[k]);
+              console.log('\n===== LOG '+k+' HTTP '+r.status+' =====');
+              console.log((await r.text()).slice(-30000));
+            }
+          })().catch(e=>{console.error(e);process.exit(1)})
+          NODE
