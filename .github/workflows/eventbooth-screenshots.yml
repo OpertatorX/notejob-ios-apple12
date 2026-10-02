@@ -1,75 +1,59 @@
-name: Event Booth screenshots upload
+name: Event Booth RC4 screenshot audit
+
 on:
   push:
     branches: [eventbooth-asc-internal]
     paths: [".github/workflows/eventbooth-screenshots.yml"]
+  workflow_dispatch:
+
 permissions:
   contents: read
+
 jobs:
   screenshots:
     runs-on: macos-26
-    timeout-minutes: 40
-    env:
-      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-      OX_EAS_PROJECT_ID: "a8ec463b-a530-41c9-af1f-c5499359f881"
-      OX_PROJECT_SLUG: "ox-invoice"
-      OX_BUNDLE_ID: "com.operatorx.oxinvoice"
-      APP_ID: "6818422621"
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: "24" }
 
-      - name: Reconstruct and patch Event Booth
+      - name: Reconstruct audited RC4
         shell: bash
         run: |
           set -euo pipefail
           rm -rf /tmp/eventbooth-src /tmp/eb-dd /tmp/eb-shots
           mkdir -p /tmp/eventbooth-src /tmp/eb-shots
-          cat internal/eventbooth/chunks/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/eventbooth-src.tar.gz
-          tar -xzf /tmp/eventbooth-src.tar.gz -C /tmp/eventbooth-src
+          cat internal/eventbooth/chunks/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/base.tgz
+          echo "8a8d2094865775cdd5f1f6b302d527fbd2fda02008bed437706451fb83ee9cd2  /tmp/base.tgz" | shasum -a 256 -c -
+          tar -xzf /tmp/base.tgz -C /tmp/eventbooth-src
           cp internal/eventbooth/overrides/CameraController.swift /tmp/eventbooth-src/EventBooth/Services/CameraController.swift
-          ICONDIR=/tmp/eventbooth-src/EventBooth/Resources/Assets.xcassets/AppIcon.appiconset
-          SRCICON="$ICONDIR/AppIcon-1024.png"
-          sips -z 40 40 "$SRCICON" --out "$ICONDIR/AppIcon-20@2x.png" >/dev/null
-          sips -z 60 60 "$SRCICON" --out "$ICONDIR/AppIcon-20@3x.png" >/dev/null
-          sips -z 58 58 "$SRCICON" --out "$ICONDIR/AppIcon-29@2x.png" >/dev/null
-          sips -z 87 87 "$SRCICON" --out "$ICONDIR/AppIcon-29@3x.png" >/dev/null
-          sips -z 80 80 "$SRCICON" --out "$ICONDIR/AppIcon-40@2x.png" >/dev/null
-          sips -z 120 120 "$SRCICON" --out "$ICONDIR/AppIcon-40@3x.png" >/dev/null
-          sips -z 120 120 "$SRCICON" --out "$ICONDIR/AppIcon-60@2x.png" >/dev/null
-          sips -z 180 180 "$SRCICON" --out "$ICONDIR/AppIcon-60@3x.png" >/dev/null
-          sips -z 20 20 "$SRCICON" --out "$ICONDIR/AppIcon-20.png" >/dev/null
-          sips -z 29 29 "$SRCICON" --out "$ICONDIR/AppIcon-29.png" >/dev/null
-          sips -z 40 40 "$SRCICON" --out "$ICONDIR/AppIcon-40.png" >/dev/null
-          sips -z 76 76 "$SRCICON" --out "$ICONDIR/AppIcon-76.png" >/dev/null
-          sips -z 152 152 "$SRCICON" --out "$ICONDIR/AppIcon-76@2x.png" >/dev/null
-          sips -z 167 167 "$SRCICON" --out "$ICONDIR/AppIcon-83.5@2x.png" >/dev/null
-          cat > "$ICONDIR/Contents.json" <<'JSON'
-          {"images":[
-            {"idiom":"iphone","size":"20x20","scale":"2x","filename":"AppIcon-20@2x.png"},
-            {"idiom":"iphone","size":"20x20","scale":"3x","filename":"AppIcon-20@3x.png"},
-            {"idiom":"iphone","size":"29x29","scale":"2x","filename":"AppIcon-29@2x.png"},
-            {"idiom":"iphone","size":"29x29","scale":"3x","filename":"AppIcon-29@3x.png"},
-            {"idiom":"iphone","size":"40x40","scale":"2x","filename":"AppIcon-40@2x.png"},
-            {"idiom":"iphone","size":"40x40","scale":"3x","filename":"AppIcon-40@3x.png"},
-            {"idiom":"iphone","size":"60x60","scale":"2x","filename":"AppIcon-60@2x.png"},
-            {"idiom":"iphone","size":"60x60","scale":"3x","filename":"AppIcon-60@3x.png"},
-            {"idiom":"ipad","size":"20x20","scale":"1x","filename":"AppIcon-20.png"},
-            {"idiom":"ipad","size":"20x20","scale":"2x","filename":"AppIcon-20@2x.png"},
-            {"idiom":"ipad","size":"29x29","scale":"1x","filename":"AppIcon-29.png"},
-            {"idiom":"ipad","size":"29x29","scale":"2x","filename":"AppIcon-29@2x.png"},
-            {"idiom":"ipad","size":"40x40","scale":"1x","filename":"AppIcon-40.png"},
-            {"idiom":"ipad","size":"40x40","scale":"2x","filename":"AppIcon-40@2x.png"},
-            {"idiom":"ipad","size":"76x76","scale":"1x","filename":"AppIcon-76.png"},
-            {"idiom":"ipad","size":"76x76","scale":"2x","filename":"AppIcon-76@2x.png"},
-            {"idiom":"ipad","size":"83.5x83.5","scale":"2x","filename":"AppIcon-83.5@2x.png"},
-            {"idiom":"ios-marketing","size":"1024x1024","scale":"1x","filename":"AppIcon-1024.png"}],
-            "info":{"author":"xcode","version":1}}
-          JSON
-          /usr/libexec/PlistBuddy -c "Delete :CFBundleIconName" /tmp/eventbooth-src/EventBooth/Info.plist 2>/dev/null || true
-          /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string AppIcon" /tmp/eventbooth-src/EventBooth/Info.plist
-          sed -i.bak '/        excludes:/,+1d; /    resources:/,+1d' /tmp/eventbooth-src/project.yml
+          cat internal/eventbooth/rc2/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/rc2.tgz
+          echo "6ce64b55c2cbaaffcf43b6bf939d4368158ebf28ede0697f01c46e3913161868  /tmp/rc2.tgz" | shasum -a 256 -c -
+          tar -xzf /tmp/rc2.tgz -C /tmp/eventbooth-src
+          cat internal/eventbooth/rc4patch/part*.txt > /tmp/rc4.patch
+          cd /tmp/eventbooth-src
+          patch --batch -p1 < /tmp/rc4.patch
+          cd "$GITHUB_WORKSPACE"
+          python3 internal/eventbooth/rc4hotfix.py
+          curl -L --fail --retry 3 --silent --show-error \
+            'https://images.unsplash.com/photo-1503738692489-fff01e3e0f3e?auto=format&fit=crop&fm=jpg&q=82&w=2400' \
+            -o /tmp/eventbooth-src/EventBooth/Resources/ScreenshotWedding.jpg
+          test -s /tmp/eventbooth-src/EventBooth/Resources/ScreenshotWedding.jpg
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/eventbooth-src/EventBooth/App/EventBoothApp.swift')
+          s=p.read_text()
+          old='''        .task {
+          await purchases.loadProducts()
+          await purchases.refreshEntitlements()
+        }'''
+          new='''        .task {
+          guard !EBScreenshotMode.isEnabled else { return }
+          await purchases.loadProducts()
+          await purchases.refreshEntitlements()
+        }'''
+          if old in s:
+              p.write_text(s.replace(old,new,1))
+          PY
 
       - name: Build simulator app
         shell: bash
@@ -78,14 +62,19 @@ jobs:
           brew install xcodegen
           cd /tmp/eventbooth-src
           xcodegen generate
+          set -o pipefail
           xcodebuild -project EventBooth.xcodeproj -scheme EventBooth -configuration Debug \
             -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/eb-dd \
-            CODE_SIGNING_ALLOWED=NO build >/tmp/eb-sim-build.log
+            CODE_SIGNING_ALLOWED=NO build | tee /tmp/eb-shots/build.log
+          if grep -E '/tmp/eventbooth-src/EventBooth/.*: warning:' /tmp/eb-shots/build.log; then
+            echo "SOURCE_WARNING_GATE=FAIL"
+            exit 31
+          fi
           APP="$(find /tmp/eb-dd/Build/Products -path '*Debug-iphonesimulator/EventBooth.app' -type d -print -quit)"
           test -d "$APP"
           echo "SIM_APP=$APP" >> "$GITHUB_ENV"
 
-      - name: Capture real iPhone and iPad screens
+      - name: Resolve simulators
         shell: bash
         run: |
           set -euo pipefail
@@ -107,121 +96,68 @@ jobs:
           pad=pick(pads,['iPad Pro 13-inch (M4)','iPad Air 13-inch (M3)','iPad Air 11-inch (M3)'])
           print('IPHONE_UDID='+phone['udid'])
           print('IPAD_UDID='+pad['udid'])
+          print('IPHONE_NAME='+phone['name'])
+          print('IPAD_NAME='+pad['name'])
           PY
+          cat /tmp/udids.env
+
+      - name: Capture real RC4 screens
+        shell: bash
+        run: |
+          set -euo pipefail
           source /tmp/udids.env
 
           xcrun simctl boot "$IPHONE_UDID" || true
           sleep 18
           xcrun simctl install "$IPHONE_UDID" "$SIM_APP"
-          xcrun simctl launch "$IPHONE_UDID" com.operatorx.eventbooth -AppleLanguages '(fr)' -AppleLocale fr_FR || true
-          sleep 6
-          xcrun simctl io "$IPHONE_UDID" screenshot /tmp/eb-shots/iphone-fr.png
-          xcrun simctl terminate "$IPHONE_UDID" com.operatorx.eventbooth || true
-          xcrun simctl launch "$IPHONE_UDID" com.operatorx.eventbooth -AppleLanguages '(en)' -AppleLocale en_US || true
-          sleep 5
-          xcrun simctl io "$IPHONE_UDID" screenshot /tmp/eb-shots/iphone-en.png
+          for spec in \
+            "events fr fr_FR iphone-events-fr.png" \
+            "dashboard fr fr_FR iphone-dashboard-fr.png" \
+            "library fr fr_FR iphone-library-fr.png" \
+            "events en en_US iphone-events-en.png" \
+            "dashboard en en_US iphone-dashboard-en.png" \
+            "library en en_US iphone-library-en.png"; do
+            set -- $spec
+            route="$1"; lang="$2"; locale="$3"; out="$4"
+            xcrun simctl terminate "$IPHONE_UDID" com.operatorx.eventbooth >/dev/null 2>&1 || true
+            SIMCTL_CHILD_EVENTBOOTH_SCREEN="$route" \
+              xcrun simctl launch "$IPHONE_UDID" com.operatorx.eventbooth \
+              -AppleLanguages "($lang)" -AppleLocale "$locale" >/dev/null
+            sleep 4
+            xcrun simctl io "$IPHONE_UDID" screenshot "/tmp/eb-shots/$out"
+          done
           xcrun simctl shutdown "$IPHONE_UDID" || true
 
           xcrun simctl boot "$IPAD_UDID" || true
           sleep 18
           xcrun simctl install "$IPAD_UDID" "$SIM_APP"
-          xcrun simctl launch "$IPAD_UDID" com.operatorx.eventbooth -AppleLanguages '(fr)' -AppleLocale fr_FR || true
-          sleep 6
-          xcrun simctl io "$IPAD_UDID" screenshot /tmp/eb-shots/ipad-fr.png
-          xcrun simctl terminate "$IPAD_UDID" com.operatorx.eventbooth || true
-          xcrun simctl launch "$IPAD_UDID" com.operatorx.eventbooth -AppleLanguages '(en)' -AppleLocale en_US || true
-          sleep 5
-          xcrun simctl io "$IPAD_UDID" screenshot /tmp/eb-shots/ipad-en.png
+          for spec in \
+            "booth fr fr_FR ipad-booth-fr.png" \
+            "dashboard fr fr_FR ipad-dashboard-fr.png" \
+            "guestbook fr fr_FR ipad-guestbook-fr.png" \
+            "booth en en_US ipad-booth-en.png" \
+            "dashboard en en_US ipad-dashboard-en.png" \
+            "guestbook en en_US ipad-guestbook-en.png"; do
+            set -- $spec
+            route="$1"; lang="$2"; locale="$3"; out="$4"
+            xcrun simctl terminate "$IPAD_UDID" com.operatorx.eventbooth >/dev/null 2>&1 || true
+            SIMCTL_CHILD_EVENTBOOTH_SCREEN="$route" \
+              xcrun simctl launch "$IPAD_UDID" com.operatorx.eventbooth \
+              -AppleLanguages "($lang)" -AppleLocale "$locale" >/dev/null
+            sleep 4
+            xcrun simctl io "$IPAD_UDID" screenshot "/tmp/eb-shots/$out"
+          done
           xcrun simctl shutdown "$IPAD_UDID" || true
-          test -s /tmp/eb-shots/iphone-fr.png
-          test -s /tmp/eb-shots/iphone-en.png
-          test -s /tmp/eb-shots/ipad-fr.png
-          test -s /tmp/eb-shots/ipad-en.png
 
-      - name: Render App Store promo canvases
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m venv /tmp/eb-venv
-          /tmp/eb-venv/bin/python -m pip install --disable-pip-version-check Pillow >/dev/null
-          /tmp/eb-venv/bin/python - <<'PY'
-          from PIL import Image,ImageOps,ImageDraw,ImageFont
-          import os
-          os.makedirs('/tmp/store-shots/fr-FR',exist_ok=True)
-          os.makedirs('/tmp/store-shots/en-US',exist_ok=True)
-          os.makedirs('/tmp/store-shots-ipad/fr-FR',exist_ok=True)
-          os.makedirs('/tmp/store-shots-ipad/en-US',exist_ok=True)
-          reg='/System/Library/Fonts/Supplemental/Arial.ttf'
-          bold='/System/Library/Fonts/Supplemental/Arial Bold.ttf'
-          def make(src,out,size,title,sub):
-              W,H=size
-              im=Image.new('RGB',size,'#F5EFE6')
-              d=ImageDraw.Draw(im)
-              try: fb=ImageFont.truetype(bold,int(W*.055)); fr=ImageFont.truetype(reg,int(W*.026))
-              except: fb=ImageFont.load_default(); fr=ImageFont.load_default()
-              d.text((W//2,int(H*.045)),title,font=fb,fill='#3A2B22',anchor='ma',align='center')
-              d.text((W//2,int(H*.115)),sub,font=fr,fill='#7B6758',anchor='ma',align='center')
-              raw=Image.open(src).convert('RGB')
-              maxw,maxh=int(W*.86),int(H*.76)
-              raw.thumbnail((maxw,maxh),Image.Resampling.LANCZOS)
-              x=(W-raw.width)//2; y=int(H*.19)+(maxh-raw.height)//2
-              shadow=Image.new('RGBA',size,(0,0,0,0)); sd=ImageDraw.Draw(shadow)
-              sd.rounded_rectangle((x-18,y-18,x+raw.width+18,y+raw.height+18),radius=36,fill=(0,0,0,35))
-              im=Image.alpha_composite(im.convert('RGBA'),shadow).convert('RGB')
-              im.paste(raw,(x,y))
-              im.save(out,'JPEG',quality=95,subsampling=0)
-          make('/tmp/eb-shots/iphone-fr.png','/tmp/store-shots/fr-FR/1.jpg',(1242,2688),'Vos souvenirs, réunis','Photo, vidéo, voix et livre d’or')
-          make('/tmp/eb-shots/iphone-en.png','/tmp/store-shots/en-US/1.jpg',(1242,2688),'Every memory, together','Photo, video, voice and guestbook')
-          make('/tmp/eb-shots/ipad-fr.png','/tmp/store-shots-ipad/fr-FR/1.jpg',(2064,2752),'Transformez votre iPad en Event Booth','Une borne élégante pour tous vos invités')
-          make('/tmp/eb-shots/ipad-en.png','/tmp/store-shots-ipad/en-US/1.jpg',(2064,2752),'Turn your iPad into Event Booth','An elegant memory booth for every guest')
-          PY
-          find /tmp/store-shots /tmp/store-shots-ipad -type f -ls
-
-      - name: Resolve ASC key
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/easlib
-          npm install --prefix /tmp/easlib eas-cli@latest --ignore-scripts --no-audit --no-fund >/dev/null
-
-      - name: Upload screenshots to App Store Connect
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat >/tmp/upload.cjs <<'NODE'
-          const fs=require('fs'),crypto=require('crypto'),path=require('path');
-          const E='/tmp/easlib/node_modules/eas-cli/build';
-          const {createGraphqlClient}=require(E+'/commandUtils/context/contextUtils/createGraphqlClient.js');
-          const {getOwnerAccountForProjectIdAsync}=require(E+'/project/projectUtils.js');
-          const {getAscApiKeyForAppSubmissionsAsync}=require(E+'/credentials/ios/api/GraphqlClient.js');
-          const {AppStoreConnectApiKeyQuery}=require(E+'/graphql/queries/AppStoreConnectApiKeyQuery.js');
-          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-          function b64url(x){return Buffer.from(x).toString('base64url')}
-          function jwtFor(k){const n=Math.floor(Date.now()/1000),h={alg:'ES256',kid:k.keyIdentifier,typ:'JWT'},p={iss:k.issuerIdentifier,iat:n-5,exp:n+900,aud:'appstoreconnect-v1'};const s=b64url(JSON.stringify(h))+'.'+b64url(JSON.stringify(p));return s+'.'+crypto.sign('sha256',Buffer.from(s),{key:k.keyP8,dsaEncoding:'ieee-p1363'}).toString('base64url')}
-          async function req(tok,m,u,b=null,ok=[200]){const full=u.startsWith('http')?u:'https://api.appstoreconnect.apple.com'+u;const h=full.startsWith('https://api.appstoreconnect.apple.com')?{Authorization:'Bearer '+tok,'Content-Type':'application/json'}:{};const r=await fetch(full,{method:m,headers:h,body:b?(Buffer.isBuffer(b)?b:JSON.stringify(b)):undefined});const t=await r.text();let j=null;try{j=t?JSON.parse(t):null}catch{j=t}if(!ok.includes(r.status))throw new Error(m+' '+u+' '+r.status+' '+JSON.stringify(j));return{status:r.status,data:j}}
-          async function all(tok,u){let n=u,o=[];while(n){const r=await req(tok,'GET',n);o.push(...(r.data?.data||[]));n=r.data?.links?.next||null}return o}
-          async function uploadAsset(tok,shot,bytes){for(const op of shot.attributes.uploadOperations||[]){const chunk=bytes.subarray(Number(op.offset||0),Number(op.offset||0)+Number(op.length||0));const headers={};for(const h of op.requestHeaders||[])headers[h.name]=h.value;const r=await fetch(op.url,{method:op.method||'PUT',headers,body:chunk});if(!r.ok)throw new Error('PUT '+r.status)}await req(tok,'PATCH','/v1/appScreenshots/'+shot.id,{data:{type:'appScreenshots',id:shot.id,attributes:{uploaded:true}}})}
-          async function uploadSet(tok,loc,locale,type,file){let sets=await all(tok,'/v1/appStoreVersionLocalizations/'+loc.id+'/appScreenshotSets?fields%5BappScreenshotSets%5D=screenshotDisplayType');let set=sets.find(x=>x.attributes?.screenshotDisplayType===type);if(!set)set=(await req(tok,'POST','/v1/appScreenshotSets',{data:{type:'appScreenshotSets',attributes:{screenshotDisplayType:type},relationships:{appStoreVersionLocalization:{data:{type:'appStoreVersionLocalizations',id:loc.id}}}}},[201])).data.data;for(const old of await all(tok,'/v1/appScreenshotSets/'+set.id+'/appScreenshots?limit=50'))await req(tok,'DELETE','/v1/appScreenshots/'+old.id,null,[204]);const bytes=fs.readFileSync(file);const shot=(await req(tok,'POST','/v1/appScreenshots',{data:{type:'appScreenshots',attributes:{fileName:path.basename(file),fileSize:bytes.length},relationships:{appScreenshotSet:{data:{type:'appScreenshotSets',id:set.id}}}}},[201])).data.data;await uploadAsset(tok,shot,bytes);for(let i=0;i<40;i++){const live=await all(tok,'/v1/appScreenshotSets/'+set.id+'/appScreenshots?fields%5BappScreenshots%5D=fileName,assetDeliveryState&limit=50');const st=live[0]?.attributes?.assetDeliveryState?.state||'UNKNOWN';console.log('VERIFY='+locale+'|'+type+'|'+st);if(st==='COMPLETE')return;await sleep(3000)}throw new Error('Screenshot timeout '+locale+' '+type)}
-          (async()=>{
-            const gql=createGraphqlClient({accessToken:process.env.EXPO_TOKEN,sessionSecret:null});
-            const account=await getOwnerAccountForProjectIdAsync(gql,process.env.OX_EAS_PROJECT_ID);
-            const frag=await getAscApiKeyForAppSubmissionsAsync(gql,{account,projectName:process.env.OX_PROJECT_SLUG,bundleIdentifier:process.env.OX_BUNDLE_ID});
-            const key=await AppStoreConnectApiKeyQuery.getByIdAsync(gql,frag.id),tok=jwtFor(key);
-            const vers=await all(tok,'/v1/apps/'+process.env.APP_ID+'/appStoreVersions?filter%5Bplatform%5D=IOS&filter%5BversionString%5D=1.0&fields%5BappStoreVersions%5D=versionString');
-            const locs=await all(tok,'/v1/appStoreVersions/'+vers[0].id+'/appStoreVersionLocalizations?fields%5BappStoreVersionLocalizations%5D=locale');
-            for(const locale of ['fr-FR','en-US']){const loc=locs.find(x=>x.attributes?.locale===locale);await uploadSet(tok,loc,locale,'APP_IPHONE_65','/tmp/store-shots/'+locale+'/1.jpg');await uploadSet(tok,loc,locale,'APP_IPAD_PRO_3GEN_129','/tmp/store-shots-ipad/'+locale+'/1.jpg')}
-            console.log('EVENTBOOTH_SCREENSHOTS=PASS');
-          })().catch(e=>{console.error('EVENTBOOTH_SCREENSHOTS=FAIL');console.error(e.stack||e.message);process.exit(1)})
-          NODE
-          node /tmp/upload.cjs
+          test "$(find /tmp/eb-shots -name '*.png' | wc -l | tr -d ' ')" -eq 12
+          echo "RC4_REAL_SCREENSHOTS=PASS"
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: EventBooth-AppStore-screenshots
+          name: EventBooth-RC4-real-screens
           path: |
-            /tmp/store-shots/**/*.jpg
-            /tmp/store-shots-ipad/**/*.jpg
             /tmp/eb-shots/*.png
+            /tmp/eb-shots/build.log
           if-no-files-found: warn
           retention-days: 30
