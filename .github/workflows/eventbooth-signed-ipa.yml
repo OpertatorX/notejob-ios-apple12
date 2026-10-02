@@ -60,6 +60,7 @@ jobs:
           s=s.replace('''\\n  func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {\\n    guard isRecording else { return }\\n    stop()\\n  }\\n''','')
           p.write_text(s)
           PY
+          sed -i '' '/recorder\.delegate = self/d' /tmp/eventbooth-src/EventBooth/Services/AudioRecorderService.swift
           cd "$GITHUB_WORKSPACE"
 
           # Apple requires a complete iOS AppIcon catalog + CFBundleIconName.
