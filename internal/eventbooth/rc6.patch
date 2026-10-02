@@ -1,0 +1,245 @@
+diff -ruN '--exclude=ScreenshotWedding.jpg' rc5_work/EventBooth/App/RootView.swift rc6_work/EventBooth/App/RootView.swift
+--- rc5_work/EventBooth/App/RootView.swift	2026-10-02 12:02:20.000000000 +0000
++++ rc6_work/EventBooth/App/RootView.swift	2026-10-02 13:51:18.614781384 +0000
+@@ -2,6 +2,7 @@
+ 
+ struct RootView: View {
+   @EnvironmentObject private var store: EventStore
++  @EnvironmentObject private var purchases: PurchaseManager
+   @State private var selectedTab = 0
+   @State private var showSplash = !EBScreenshotMode.isEnabled
+ 
+@@ -45,9 +46,13 @@
+     }
+     .environment(\.locale, appLocale)
+     .task {
++      applyEventPassRedemptionIfNeeded()
+       try? await Task.sleep(for: .milliseconds(650))
+       withAnimation(.easeOut(duration: 0.28)) { showSplash = false }
+     }
++    .onChange(of: purchases.redeemableEventPassEventID) { _, _ in
++      applyEventPassRedemptionIfNeeded()
++    }
+     .fullScreenCover(
+       item: Binding(
+         get: { store.activeBoothEventID.flatMap { store.event(id: $0) } },
+@@ -59,6 +64,15 @@
+     }
+   }
+ 
++
++  private func applyEventPassRedemptionIfNeeded() {
++    guard let eventID = purchases.redeemableEventPassEventID else { return }
++    if store.event(id: eventID) != nil {
++      store.unlockEvent(eventID)
++    }
++    purchases.confirmEventPassRedemption(for: eventID)
++  }
++
+   @ViewBuilder
+   private func screenshotView(_ route: EBScreenshotRoute, event: BoothEvent) -> some View {
+     switch route {
+diff -ruN '--exclude=ScreenshotWedding.jpg' rc5_work/EventBooth/Features/Paywall/PaywallView.swift rc6_work/EventBooth/Features/Paywall/PaywallView.swift
+--- rc5_work/EventBooth/Features/Paywall/PaywallView.swift	2026-10-02 08:48:27.000000000 +0000
++++ rc6_work/EventBooth/Features/Paywall/PaywallView.swift	2026-10-02 13:51:18.614858567 +0000
+@@ -95,8 +95,9 @@
+     if let product = purchases.eventPass {
+       Button {
+         Task {
+-          if await purchases.purchaseEventPass() {
++          if await purchases.purchaseEventPass(for: eventID) {
+             store.unlockEvent(eventID)
++            purchases.confirmEventPassRedemption(for: eventID)
+             dismiss()
+           }
+         }
+diff -ruN '--exclude=ScreenshotWedding.jpg' rc5_work/EventBooth/Resources/en.lproj/Localizable.strings rc6_work/EventBooth/Resources/en.lproj/Localizable.strings
+--- rc5_work/EventBooth/Resources/en.lproj/Localizable.strings	2026-10-02 12:02:20.000000000 +0000
++++ rc6_work/EventBooth/Resources/en.lproj/Localizable.strings	2026-10-02 13:51:18.615199868 +0000
+@@ -156,3 +156,5 @@
+ "purchase.unavailable" = "App Store product unavailable";
+ "purchase.verifyFailed" = "Purchase verification failed";
+ "purchase.pending" = "Purchase pending";
++
++"pdf.guest" = "Guest";
+diff -ruN '--exclude=ScreenshotWedding.jpg' rc5_work/EventBooth/Resources/fr.lproj/Localizable.strings rc6_work/EventBooth/Resources/fr.lproj/Localizable.strings
+--- rc5_work/EventBooth/Resources/fr.lproj/Localizable.strings	2026-10-02 12:02:20.000000000 +0000
++++ rc6_work/EventBooth/Resources/fr.lproj/Localizable.strings	2026-10-02 13:51:18.615290902 +0000
+@@ -156,3 +156,5 @@
+ "purchase.unavailable" = "Produit App Store indisponible";
+ "purchase.verifyFailed" = "La vérification de l’achat a échoué";
+ "purchase.pending" = "Achat en attente";
++
++"pdf.guest" = "Invité";
+diff -ruN '--exclude=ScreenshotWedding.jpg' rc5_work/EventBooth/Services/ExportService.swift rc6_work/EventBooth/Services/ExportService.swift
+--- rc5_work/EventBooth/Services/ExportService.swift	2026-10-02 08:42:14.000000000 +0000
++++ rc6_work/EventBooth/Services/ExportService.swift	2026-10-02 13:51:18.615086001 +0000
+@@ -27,7 +27,7 @@
+ 
+         drawLeafDecoration(in: context.cgContext, page: page)
+ 
+-        let name = memory.guestName ?? "Guest"
++        let name = memory.guestName ?? String(localized: "pdf.guest", locale: exportLocale(store))
+ 
+         draw(
+           text: name,
+@@ -212,7 +212,7 @@
+     )
+ 
+     draw(
+-      text: "Guestbook",
++      text: String(localized: "export.guestbook", locale: exportLocale(store)),
+       font: .systemFont(ofSize: 20, weight: .semibold),
+       frame: CGRect(x: 56, y: 162, width: 500, height: 34),
+       color: UIColor(red: 120 / 255, green: 98 / 255, blue: 74 / 255, alpha: 1)
+@@ -259,6 +259,14 @@
+     context.restoreGState()
+   }
+ 
++  private static func exportLocale(_ store: EventStore) -> Locale {
++    switch store.settings.languageCode {
++    case "fr": Locale(identifier: "fr_FR")
++    case "en": Locale(identifier: "en_US")
++    default: Locale.autoupdatingCurrent
++    }
++  }
++
+   private static func aspectFillRect(imageSize: CGSize, bounds: CGRect) -> CGRect {
+     guard imageSize.width > 0, imageSize.height > 0 else { return bounds }
+ 
+diff -ruN '--exclude=ScreenshotWedding.jpg' rc5_work/EventBooth/Services/PurchaseManager.swift rc6_work/EventBooth/Services/PurchaseManager.swift
+--- rc5_work/EventBooth/Services/PurchaseManager.swift	2026-10-02 12:02:20.000000000 +0000
++++ rc6_work/EventBooth/Services/PurchaseManager.swift	2026-10-02 13:51:18.614626556 +0000
+@@ -12,15 +12,25 @@
+   @Published var isPro = false
+   @Published var isPurchasing = false
+   @Published var lastError: String?
++  @Published private(set) var redeemableEventPassEventID: UUID?
+ 
+   private var transactionUpdatesTask: Task<Void, Never>?
++  private let defaults = UserDefaults.standard
++  private static let pendingEventPassKey = "eventbooth.pendingEventPassEventID"
++  private static let redeemableEventPassKey = "eventbooth.redeemableEventPassEventID"
+ 
+   init() {
++    if let raw = defaults.string(forKey: Self.redeemableEventPassKey) {
++      redeemableEventPassEventID = UUID(uuidString: raw)
++    }
++
+     transactionUpdatesTask = Task { [weak self] in
++      guard let self else { return }
++      for await result in Transaction.unfinished {
++        await self.handleTransactionUpdate(result)
++      }
+       for await result in Transaction.updates {
+-        guard case .verified(let transaction) = result else { continue }
+-        await transaction.finish()
+-        await self?.refreshEntitlements()
++        await self.handleTransactionUpdate(result)
+       }
+     }
+   }
+@@ -63,12 +73,50 @@
+     }
+   }
+ 
+-  func purchaseEventPass() async -> Bool {
++  func purchaseEventPass(for eventID: UUID) async -> Bool {
+     guard let eventPass else {
+       lastError = String(localized: "purchase.unavailable")
+       return false
+     }
+-    return await purchase(eventPass)
++
++    defaults.set(eventID.uuidString, forKey: Self.pendingEventPassKey)
++    isPurchasing = true
++    defer { isPurchasing = false }
++
++    do {
++      let result = try await eventPass.purchase()
++      switch result {
++      case .success(let verification):
++        guard case .verified(let transaction) = verification else {
++          defaults.removeObject(forKey: Self.pendingEventPassKey)
++          lastError = String(localized: "purchase.verifyFailed")
++          return false
++        }
++        markEventPassRedeemable(eventID)
++        await transaction.finish()
++        lastError = nil
++        return true
++      case .pending:
++        lastError = String(localized: "purchase.pending")
++        return false
++      case .userCancelled:
++        defaults.removeObject(forKey: Self.pendingEventPassKey)
++        return false
++      @unknown default:
++        defaults.removeObject(forKey: Self.pendingEventPassKey)
++        return false
++      }
++    } catch {
++      defaults.removeObject(forKey: Self.pendingEventPassKey)
++      lastError = error.localizedDescription
++      return false
++    }
++  }
++
++  func confirmEventPassRedemption(for eventID: UUID) {
++    guard redeemableEventPassEventID == eventID else { return }
++    defaults.removeObject(forKey: Self.redeemableEventPassKey)
++    redeemableEventPassEventID = nil
+   }
+ 
+   func purchasePro() async -> Bool {
+@@ -81,6 +129,34 @@
+     return ok
+   }
+ 
++  private func markEventPassRedeemable(_ eventID: UUID) {
++    defaults.set(eventID.uuidString, forKey: Self.redeemableEventPassKey)
++    defaults.removeObject(forKey: Self.pendingEventPassKey)
++    redeemableEventPassEventID = eventID
++  }
++
++  private func handleTransactionUpdate(_ result: VerificationResult<Transaction>) async {
++    guard case .verified(let transaction) = result else { return }
++
++    if transaction.productID == Self.eventPassID {
++      if let raw = defaults.string(forKey: Self.pendingEventPassKey),
++        let eventID = UUID(uuidString: raw)
++      {
++        markEventPassRedeemable(eventID)
++      }
++      await transaction.finish()
++      return
++    }
++
++    if transaction.productID == Self.proAnnualID {
++      await transaction.finish()
++      await refreshEntitlements()
++      return
++    }
++
++    await transaction.finish()
++  }
++
+   private func purchase(_ product: Product) async -> Bool {
+     isPurchasing = true
+     defer { isPurchasing = false }
+diff -ruN '--exclude=ScreenshotWedding.jpg' rc5_work/EventBooth/Stores/EventStore.swift rc6_work/EventBooth/Stores/EventStore.swift
+--- rc5_work/EventBooth/Stores/EventStore.swift	2026-10-02 13:32:03.892733868 +0000
++++ rc6_work/EventBooth/Stores/EventStore.swift	2026-10-02 13:51:18.614971393 +0000
+@@ -203,7 +203,11 @@
+   private func prepareScreenshotFixture() {
+     let eventID = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
+ 
+-    if !events.contains(where: { $0.id == eventID }) {
++    memories.removeAll { $0.eventID == eventID }
++    events.removeAll { $0.id == eventID }
++    try? fm.removeItem(at: eventDirectory(eventID))
++
++    do {
+       let formatter = DateFormatter()
+       formatter.calendar = Calendar(identifier: .gregorian)
+       formatter.locale = Locale(identifier: "en_US_POSIX")
