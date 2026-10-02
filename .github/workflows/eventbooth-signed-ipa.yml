@@ -81,6 +81,11 @@ jobs:
           /usr/libexec/PlistBuddy -c "Delete :CFBundleIconName" /tmp/eventbooth-src/EventBooth/Info.plist 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string AppIcon" /tmp/eventbooth-src/EventBooth/Info.plist
 
+          # XcodeGen: include Resources in the target so Assets.xcassets is compiled.
+          python3 -c 'from pathlib import Path; p=Path("/tmp/eventbooth-src/project.yml"); s=p.read_text(); old="    sources:\\n      - path: EventBooth\\n        excludes:\\n          - Resources\\n    resources:\\n      - path: EventBooth/Resources\\n"; new="    sources:\\n      - path: EventBooth\\n"; assert old in s, "project.yml resources block not found"; p.write_text(s.replace(old,new))'
+          echo "=== patched project.yml ==="
+          cat /tmp/eventbooth-src/project.yml
+
       - name: Install tooling
         run: |
           set -euo pipefail
@@ -250,6 +255,15 @@ jobs:
             -exportOptionsPlist artifacts/ExportOptions.plist | tee /tmp/eventbooth-export.log
           IPA="$(find artifacts/export -name '*.ipa' -print -quit)"
           test -s "$IPA"
+          rm -rf /tmp/eventbooth-ipa-check
+          mkdir -p /tmp/eventbooth-ipa-check
+          unzip -q "$IPA" -d /tmp/eventbooth-ipa-check
+          APP="$(find /tmp/eventbooth-ipa-check/Payload -maxdepth 1 -name '*.app' -type d -print -quit)"
+          test -n "$APP"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIconName" "$APP/Info.plist" | grep -qx "AppIcon"
+          test -s "$APP/Assets.car"
+          find "$APP" -maxdepth 1 -type f -name 'AppIcon*.png' -print
+          echo "APPICON_BUNDLE_VALID=yes"
           shasum -a 256 "$IPA" | tee artifacts/IPA_SHA256.txt
           echo "IPA_READY=yes"
 
