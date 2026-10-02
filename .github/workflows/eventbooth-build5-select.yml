@@ -1,0 +1,116 @@
+name: Event Booth build 5 select
+
+on:
+  push:
+    branches:
+      - eventbooth-asc-internal
+    paths:
+      - ".github/workflows/eventbooth-build5-select.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  select:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      OX_EAS_PROJECT_ID: "a8ec463b-a530-41c9-af1f-c5499359f881"
+      OX_PROJECT_SLUG: "ox-invoice"
+      OX_BUNDLE_ID: "com.operatorx.oxinvoice"
+      EVENTBOOTH_APP_ID: "6818422621"
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Wait for build 5 and select it
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/easlib
+          npm install --prefix /tmp/easlib eas-cli@latest --ignore-scripts --no-audit --no-fund >/dev/null
+          cat > /tmp/select-build5.cjs <<'NODE'
+          const crypto=require('crypto');
+          const E='/tmp/easlib/node_modules/eas-cli/build';
+          const {createGraphqlClient}=require(E+'/commandUtils/context/contextUtils/createGraphqlClient.js');
+          const {getOwnerAccountForProjectIdAsync}=require(E+'/project/projectUtils.js');
+          const {getAscApiKeyForAppSubmissionsAsync}=require(E+'/credentials/ios/api/GraphqlClient.js');
+          const {AppStoreConnectApiKeyQuery}=require(E+'/graphql/queries/AppStoreConnectApiKeyQuery.js');
+
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          const b64url=x=>Buffer.from(x).toString('base64url');
+          function jwtFor(k){
+            const n=Math.floor(Date.now()/1000);
+            const h={alg:'ES256',kid:k.keyIdentifier,typ:'JWT'};
+            const p={iss:k.issuerIdentifier,iat:n-5,exp:n+900,aud:'appstoreconnect-v1'};
+            const s=b64url(JSON.stringify(h))+'.'+b64url(JSON.stringify(p));
+            return s+'.'+crypto.sign('sha256',Buffer.from(s),{key:k.keyP8,dsaEncoding:'ieee-p1363'}).toString('base64url');
+          }
+          async function req(tok,m,u,b=null,ok=[200]){
+            const r=await fetch('https://api.appstoreconnect.apple.com'+u,{
+              method:m,
+              headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},
+              body:b?JSON.stringify(b):undefined
+            });
+            const t=await r.text(); let j={}; try{j=t?JSON.parse(t):{}}catch{}
+            if(!ok.includes(r.status)) throw new Error(m+' '+u+' -> '+r.status+' '+t.slice(0,2500));
+            return j;
+          }
+          async function all(tok,u){
+            let next=u,out=[];
+            while(next){
+              const j=await req(tok,'GET',next);
+              out.push(...(j.data||[]));
+              next=j.links?.next ? j.links.next.replace('https://api.appstoreconnect.apple.com','') : null;
+            }
+            return out;
+          }
+
+          (async()=>{
+            const gql=createGraphqlClient({accessToken:process.env.EXPO_TOKEN,sessionSecret:null});
+            const account=await getOwnerAccountForProjectIdAsync(gql,process.env.OX_EAS_PROJECT_ID);
+            const frag=await getAscApiKeyForAppSubmissionsAsync(gql,{
+              account,
+              projectName:process.env.OX_PROJECT_SLUG,
+              bundleIdentifier:process.env.OX_BUNDLE_ID
+            });
+            const key=await AppStoreConnectApiKeyQuery.getByIdAsync(gql,frag.id);
+            let tok=jwtFor(key);
+
+            const versions=await all(tok,
+              '/v1/apps/'+process.env.EVENTBOOTH_APP_ID+
+              '/appStoreVersions?filter%5Bplatform%5D=IOS&filter%5BversionString%5D=1.0&fields%5BappStoreVersions%5D=versionString,appStoreState&limit=50'
+            );
+            if(!versions.length) throw new Error('App Store version 1.0 not found');
+            const ver=versions[0];
+            console.log('VERSION_ID='+ver.id);
+            console.log('VERSION_STATE='+ver.attributes?.appStoreState);
+
+            for(let attempt=1;attempt<=40;attempt++){
+              if(attempt%20===0) tok=jwtFor(key);
+              const builds=await all(tok,
+                '/v1/builds?filter%5Bapp%5D='+process.env.EVENTBOOTH_APP_ID+
+                '&filter%5Bversion%5D=5&fields%5Bbuilds%5D=version,expired,processingState,buildAudienceType,uploadedDate&limit=50'
+              );
+              console.log('ATTEMPT='+attempt+' BUILD5_COUNT='+builds.length);
+              for(const b of builds){
+                console.log('BUILD5='+b.id+'|'+b.attributes?.processingState+'|expired='+b.attributes?.expired+'|uploaded='+b.attributes?.uploadedDate);
+              }
+              const valid=builds.find(b=>b.attributes?.version==='5'&&!b.attributes?.expired&&b.attributes?.processingState==='VALID');
+              if(valid){
+                await req(tok,'PATCH','/v1/appStoreVersions/'+ver.id+'/relationships/build',{
+                  data:{type:'builds',id:valid.id}
+                },[204]);
+                console.log('BUILD5_SELECTED=yes');
+                console.log('BUILD5_ID='+valid.id);
+                return;
+              }
+              await sleep(30000);
+            }
+            throw new Error('Build 5 did not become VALID within watcher window');
+          })().catch(e=>{console.error(e.stack||e.message);process.exit(1)});
+          NODE
+          node /tmp/select-build5.cjs
