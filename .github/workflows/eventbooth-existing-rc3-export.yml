@@ -1,0 +1,31 @@
+name: Event Booth existing RC3 export
+on:
+  workflow_dispatch:
+  push:
+    branches: [eventbooth-asc-internal]
+    paths: [".github/workflows/eventbooth-existing-rc3-export.yml"]
+permissions: { contents: read }
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -euo pipefail
+          rm -rf /tmp/src && mkdir -p /tmp/src
+          cat internal/eventbooth/chunks/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/base.tgz
+          tar -xzf /tmp/base.tgz -C /tmp/src
+          cp internal/eventbooth/overrides/CameraController.swift /tmp/src/EventBooth/Services/CameraController.swift
+          cat internal/eventbooth/rc2/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/rc2.tgz
+          tar -xzf /tmp/rc2.tgz -C /tmp/src
+          cat internal/eventbooth/rc3/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/rc3.tgz
+          echo "RC3_SHA=$(sha256sum /tmp/rc3.tgz | cut -d' ' -f1)"
+          echo "=== RC3 FILES ==="
+          tar -tzf /tmp/rc3.tgz | sort
+          tar -xzf /tmp/rc3.tgz -C /tmp/src
+          tar -czf /tmp/EventBooth-existing-RC3-source.tar.gz -C /tmp/src .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EventBooth-existing-RC3-source
+          path: /tmp/EventBooth-existing-RC3-source.tar.gz
+          retention-days: 7
