@@ -1,0 +1,116 @@
+diff -ruN '--exclude=ScreenshotWedding.jpg' rc4_work/EventBooth/Features/Booth/BoothHomeView.swift rc5_work/EventBooth/Features/Booth/BoothHomeView.swift
+--- rc4_work/EventBooth/Features/Booth/BoothHomeView.swift	2026-10-02 12:02:20.000000000 +0000
++++ rc5_work/EventBooth/Features/Booth/BoothHomeView.swift	2026-10-02 13:32:03.892288064 +0000
+@@ -133,19 +133,19 @@
+     HStack(spacing: 14) {
+       if event.features.photos {
+         EBGlassActionCard(icon: "camera.fill", title: "booth.photo", subtitle: "booth.photo.sub") {
+-          destination = .photo
++          open(.photo)
+         }
+       }
+ 
+       if event.features.videos {
+         EBGlassActionCard(icon: "video.fill", title: "booth.video", subtitle: "booth.video.sub") {
+-          destination = .video
++          open(.video)
+         }
+       }
+ 
+       if event.features.voice {
+         EBGlassActionCard(icon: "mic.fill", title: "booth.voice", subtitle: "booth.voice.sub") {
+-          destination = .voice
++          open(.voice)
+         }
+       }
+ 
+diff -ruN '--exclude=ScreenshotWedding.jpg' rc4_work/EventBooth/Features/Dashboard/EventDashboardView.swift rc5_work/EventBooth/Features/Dashboard/EventDashboardView.swift
+--- rc4_work/EventBooth/Features/Dashboard/EventDashboardView.swift	2026-10-02 12:02:20.000000000 +0000
++++ rc5_work/EventBooth/Features/Dashboard/EventDashboardView.swift	2026-10-02 13:32:03.892214375 +0000
+@@ -72,12 +72,21 @@
+     VStack(spacing: 5) {
+       Image(systemName: icon).font(.system(size: 15))
+       Text("\(memories.filter { $0.kind == kind }.count)").font(.system(size: 20, weight: .bold))
+-      Text(LocalizedStringKey("kind.\(kind.rawValue)")).font(.system(size: 10)).foregroundStyle(
+-        .secondary)
++      Text(kindLabel(kind)).font(.system(size: 10)).foregroundStyle(.secondary)
+     }.frame(maxWidth: .infinity).padding(.vertical, 14).background(
+       Color.ebPaper, in: RoundedRectangle(cornerRadius: 18))
+   }
+ 
++
++  private func kindLabel(_ kind: MemoryKind) -> String {
++    switch kind {
++    case .photo: String(localized: "kind.photo", locale: locale)
++    case .video: String(localized: "kind.video", locale: locale)
++    case .voice: String(localized: "kind.voice", locale: locale)
++    case .note: String(localized: "kind.note", locale: locale)
++    }
++  }
++
+   private func capsule(_ event: BoothEvent) -> some View {
+     NavigationLink {
+       MemoryLibraryView(eventID: eventID)
+diff -ruN '--exclude=ScreenshotWedding.jpg' rc4_work/EventBooth/Features/Events/EventsHomeView.swift rc5_work/EventBooth/Features/Events/EventsHomeView.swift
+--- rc4_work/EventBooth/Features/Events/EventsHomeView.swift	2026-10-02 12:02:20.000000000 +0000
++++ rc5_work/EventBooth/Features/Events/EventsHomeView.swift	2026-10-02 13:32:03.892041892 +0000
+@@ -111,6 +111,7 @@
+   var body: some View {
+     ZStack(alignment: .bottom) {
+       LocalImage(image: store.coverImage(for: event))
++        .frame(maxWidth: .infinity)
+         .frame(height: cardHeight)
+         .clipped()
+ 
+@@ -174,12 +175,13 @@
+       }
+       .padding(18)
+     }
++    .frame(maxWidth: .infinity)
+     .frame(height: cardHeight)
+     .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+   }
+ 
+   private var cardHeight: CGFloat {
+-    horizontalSizeClass == .compact ? 390 : 330
++    horizontalSizeClass == .compact ? 360 : 330
+   }
+ }
+ 
+diff -ruN '--exclude=ScreenshotWedding.jpg' rc4_work/EventBooth/Stores/EventStore.swift rc5_work/EventBooth/Stores/EventStore.swift
+--- rc4_work/EventBooth/Stores/EventStore.swift	2026-10-02 12:02:20.000000000 +0000
++++ rc5_work/EventBooth/Stores/EventStore.swift	2026-10-02 13:32:03.892733868 +0000
+@@ -231,6 +231,19 @@
+       )
+ 
+       let coverPath = created.coverPath
++      let isFrenchFixture = Locale.current.language.languageCode?.identifier == "fr"
++      let noteMessages = isFrenchFixture ? [
++        "Une journée magnifique. On vous souhaite tout le bonheur du monde.",
++        "Merci pour cette soirée inoubliable ♡",
++        "À votre nouvelle aventure !",
++        "Des souvenirs qu’on gardera longtemps."
++      ] : [
++        "A beautiful day. Wishing you a lifetime of happiness.",
++        "Thank you for an unforgettable evening ♡",
++        "To your next adventure!",
++        "Memories we will keep for a very long time."
++      ]
++
+       var fixture: [EventMemory] = []
+       for index in 0..<143 {
+         let kind: MemoryKind
+@@ -249,12 +262,7 @@
+             filePath: kind == .photo ? coverPath : nil,
+             thumbnailPath: (kind == .photo || kind == .video) ? coverPath : nil,
+             guestName: kind == .note ? ["Camille", "Louis", "Chloé", "Arthur"][index % 4] : nil,
+-            message: kind == .note ? [
+-              "Une journée magnifique. On vous souhaite tout le bonheur du monde.",
+-              "Merci pour cette soirée inoubliable ♡",
+-              "À votre nouvelle aventure !",
+-              "Des souvenirs qu’on gardera longtemps."
+-            ][index % 4] : nil,
++            message: kind == .note ? noteMessages[index % noteMessages.count] : nil,
+             duration: (kind == .voice || kind == .video) ? Double(12 + index % 41) : nil,
+             isFavorite: index % 17 == 0
+           )
