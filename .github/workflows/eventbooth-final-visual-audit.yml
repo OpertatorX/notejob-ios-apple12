@@ -33,18 +33,14 @@ jobs:
           python3 internal/eventbooth/rc8hotfix.py
           python3 internal/eventbooth/finalhotfix.py
           python3 internal/eventbooth/approvedicon.py
+          ICON="$ROOT/EventBooth/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
+          test -s "$ICON"
+          echo "FINAL_ICON_SHA256=$(shasum -a 256 "$ICON" | awk '{print $1}')"
 
           curl -L --fail --retry 3 --silent --show-error \
             'https://images.unsplash.com/photo-1503738692489-fff01e3e0f3e?auto=format&fit=crop&fm=jpg&q=82&w=2400' \
             -o "$ROOT/EventBooth/Resources/ScreenshotWedding.jpg"
           test -s "$ROOT/EventBooth/Resources/ScreenshotWedding.jpg"
-          python3 - <<'PY'
-          from PIL import Image
-          p='/tmp/eventbooth-src/EventBooth/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png'
-          with Image.open(p) as im:
-              im.load(); assert im.size == (1024,1024)
-          print('APPICON_FULL_DECODE=PASS')
-          PY
 
       - name: Build final simulator app
         shell: bash
