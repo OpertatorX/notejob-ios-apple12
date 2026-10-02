@@ -31,6 +31,7 @@ jobs:
           done
           python3 internal/eventbooth/rc8hotfix.py
           python3 internal/eventbooth/finalhotfix.py
+          python3 internal/eventbooth/approvedicon.py
           ICON="$ROOT/EventBooth/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
           BRAND="$ROOT/EventBooth/Resources/Assets.xcassets/BrandMark.imageset/BrandMark.png"
           file "$ICON"
