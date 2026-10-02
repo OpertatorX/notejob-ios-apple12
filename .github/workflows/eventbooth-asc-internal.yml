@@ -63,3 +63,4 @@ jobs:
           node /tmp/probe.cjs
 
 # rerun after first Event Booth EAS submission
+# probe after scheduled submission 60a5a720-53a5-4f15-a644-ffe33916a754
