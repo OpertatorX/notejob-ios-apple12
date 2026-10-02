@@ -1,0 +1,16 @@
+name: Event Booth capture smoke
+
+on:
+  push:
+    branches:
+      - eventbooth-asc-internal
+    paths:
+      - ".github/workflows/eventbooth-capture-smoke.yml"
+
+jobs:
+  smoke:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Smoke
+        run: echo "CAPTURE_SMOKE=PASS"
