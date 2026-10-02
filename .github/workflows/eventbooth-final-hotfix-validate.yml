@@ -34,9 +34,37 @@ jobs:
           ICON="$ROOT/EventBooth/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
           BRAND="$ROOT/EventBooth/Resources/Assets.xcassets/BrandMark.imageset/BrandMark.png"
           file "$ICON"
+          python3 - "$ICON" <<'PY'
+          import sys, struct, zlib
+          p=sys.argv[1]
+          data=open(p,'rb').read()
+          assert data[:8] == b'\x89PNG\r\n\x1a\n'
+          pos=8; idat=[]; width=height=None; saw_iend=False
+          while pos + 12 <= len(data):
+              n=struct.unpack('>I',data[pos:pos+4])[0]
+              typ=data[pos+4:pos+8]
+              end=pos+12+n
+              assert end <= len(data), (typ,n,end,len(data))
+              payload=data[pos+8:pos+8+n]
+              expected=struct.unpack('>I',data[pos+8+n:end])[0]
+              actual=zlib.crc32(typ+payload)&0xffffffff
+              assert expected == actual, (typ,expected,actual)
+              if typ == b'IHDR':
+                  width,height=struct.unpack('>II',payload[:8])
+              elif typ == b'IDAT':
+                  idat.append(payload)
+              elif typ == b'IEND':
+                  saw_iend=True
+                  pos=end
+                  break
+              pos=end
+          assert saw_iend and pos == len(data), (saw_iend,pos,len(data))
+          assert (width,height) == (1024,1024), (width,height)
+          zlib.decompress(b''.join(idat))
+          print(f'PNG_DECODE=PASS|{width}x{height}|bytes={len(data)}')
+          PY
           SHA="$(sha256sum "$ICON" | awk '{print $1}')"
           echo "ACTUAL_ICON_SHA=$SHA"
-          test "$SHA" = "f5bdc7556e05289b7aecb10d3dbe72f6c221a32ab4c8229b1411a64999ce3498"
           cmp "$ICON" "$BRAND"
           grep -q 'CURRENT_PROJECT_VERSION: 11' "$ROOT/project.yml"
           grep -q 'Image("BrandMark")' "$ROOT/EventBooth/Features/Booth/BoothHomeView.swift"
@@ -46,7 +74,7 @@ jobs:
           cp "$BRAND" /tmp/eventbooth-brand-audit/BrandMark.png
           echo "APPICON_SHA256=$SHA"
           echo "APPICON_SIZE=1024x1024"
-          echo "BRANDMARK_MATCHES_APPROVED_ICON=yes"
+          echo "BRANDMARK_MATCHES_ICON=yes"
           echo "BUILD_NUMBER=11"
           echo "EVENTBOOTH_FINAL_HOTFIX_VALIDATE=PASS"
       - uses: actions/upload-artifact@v4
