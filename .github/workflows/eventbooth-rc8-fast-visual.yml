@@ -1,0 +1,80 @@
+name: Event Booth RC8 fast iPhone visual gate
+on:
+  push:
+    branches: [eventbooth-asc-internal]
+    paths: [".github/workflows/eventbooth-rc8-fast-visual.yml"]
+permissions: { contents: read }
+jobs:
+  visual:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct RC8
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/eb8fast
+          rm -rf "$ROOT" /tmp/eb8fast-dd /tmp/eb8fast-out
+          mkdir -p "$ROOT" /tmp/eb8fast-out
+          cat internal/eventbooth/chunks/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/base.tgz
+          tar -xzf /tmp/base.tgz -C "$ROOT"
+          cp internal/eventbooth/overrides/CameraController.swift "$ROOT/EventBooth/Services/CameraController.swift"
+          cat internal/eventbooth/rc2/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/rc2.tgz
+          tar -xzf /tmp/rc2.tgz -C "$ROOT"
+          cat internal/eventbooth/rc4patch/part*.txt > /tmp/rc4.patch
+          (cd "$ROOT" && patch --batch -p1 < /tmp/rc4.patch)
+          python3 internal/eventbooth/rc4hotfix.py
+          for n in 5 6 7; do (cd "$ROOT" && patch --batch -p1 < "$GITHUB_WORKSPACE/internal/eventbooth/rc$n.patch"); done
+          python3 internal/eventbooth/rc8hotfix.py
+          curl -L --fail --retry 3 --silent --show-error \
+            'https://images.unsplash.com/photo-1503738692489-fff01e3e0f3e?auto=format&fit=crop&fm=jpg&q=82&w=2400' \
+            -o "$ROOT/EventBooth/Resources/ScreenshotWedding.jpg"
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/eb8fast/EventBooth/App/EventBoothApp.swift')
+          s=p.read_text()
+          old='''        .task {
+          await purchases.loadProducts()
+          await purchases.refreshEntitlements()
+        }'''
+          new='''        .task {
+          guard !EBScreenshotMode.isEnabled else { return }
+          await purchases.loadProducts()
+          await purchases.refreshEntitlements()
+        }'''
+          if old in s: p.write_text(s.replace(old,new,1))
+          PY
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v xcodegen >/dev/null || brew install xcodegen
+          cd /tmp/eb8fast
+          xcodegen generate
+          xcodebuild -project EventBooth.xcodeproj -scheme EventBooth -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/eb8fast-dd \
+            CODE_SIGNING_ALLOWED=NO build >/tmp/eb8fast-out/build.log
+          APP="$(find /tmp/eb8fast-dd/Build/Products -path '*Debug-iphonesimulator/EventBooth.app' -type d -print -quit)"
+          test -d "$APP"; echo "SIM_APP=$APP" >> "$GITHUB_ENV"
+      - name: Capture iPhone Booth FR
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun simctl shutdown all >/dev/null 2>&1 || true
+          UDID="$(xcrun simctl list devices available -j | python3 -c 'import sys,json; j=json.load(sys.stdin); ds=[d for a in j["devices"].values() for d in a if d.get("isAvailable") and d["name"].startswith("iPhone")]; pref=["iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus"]; print(next((d["udid"] for n in pref for d in ds if d["name"]==n),ds[0]["udid"]))')"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" "$SIM_APP"
+          SIMCTL_CHILD_EVENTBOOTH_SCREEN=booth xcrun simctl launch "$UDID" com.operatorx.eventbooth \
+            -AppleLanguages "(fr)" -AppleLocale "fr_FR"
+          sleep 3
+          xcrun simctl io "$UDID" screenshot /tmp/eb8fast-out/iphone-booth-fr.png
+          sips -g pixelWidth -g pixelHeight /tmp/eb8fast-out/iphone-booth-fr.png
+          echo "RC8_IPHONE_VISUAL=PASS"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: EventBooth-RC8-fast-iPhone
+          path: /tmp/eb8fast-out
+          retention-days: 30
