@@ -103,3 +103,5 @@ jobs:
           node /tmp/audit.cjs
 
 # rerun after screenshots/storekit
+
+# rerun after event pass 7.99 EUR fix
