@@ -1,4 +1,4 @@
-name: Event Booth RC4 final build 5 signed IPA
+name: Event Booth RC5 build 6 signed IPA
 
 on:
   push:
@@ -48,12 +48,21 @@ jobs:
 
           # Bundle a real golden-hour wedding image for the deterministic screenshot fixture.
           curl -L --fail --retry 3 --silent --show-error \
-            'https://images.unsplash.com/photo-1503738692489-fff01e3e0f3e?auto=format&fit=crop&fm=jpg&q=82&w=2400' \
+            'https://images.unsplash.com/photo-1755121718895-7be4fbf4475a?auto=format&fit=crop&fm=jpg&ixlib=rb-4.1.0&q=82&w=2400' \
             -o /tmp/eventbooth-src/EventBooth/Resources/ScreenshotWedding.jpg
           test -s /tmp/eventbooth-src/EventBooth/Resources/ScreenshotWedding.jpg
           file /tmp/eventbooth-src/EventBooth/Resources/ScreenshotWedding.jpg | grep -qi 'JPEG image data'
           python3 "$GITHUB_WORKSPACE/internal/eventbooth/rc4hotfix.py"
-          grep -q 'CURRENT_PROJECT_VERSION: 5' /tmp/eventbooth-src/project.yml
+          cat "$GITHUB_WORKSPACE/internal/eventbooth/rc5.patch" > /tmp/eventbooth-rc5.patch
+          cd /tmp/eventbooth-src
+          patch --batch -p1 < /tmp/eventbooth-rc5.patch
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/eventbooth-src/project.yml')
+          s=p.read_text().replace('CURRENT_PROJECT_VERSION: 5','CURRENT_PROJECT_VERSION: 6')
+          p.write_text(s)
+          PY
+          grep -q 'CURRENT_PROJECT_VERSION: 6' /tmp/eventbooth-src/project.yml
           test "$(grep -c ' = ' /tmp/eventbooth-src/EventBooth/Resources/fr.lproj/Localizable.strings)" -eq 157
           test "$(grep -c ' = ' /tmp/eventbooth-src/EventBooth/Resources/en.lproj/Localizable.strings)" -eq 157
           cd "$GITHUB_WORKSPACE"
@@ -310,7 +319,7 @@ jobs:
           APP="$(find /tmp/eventbooth-ipa-check/Payload -maxdepth 1 -name '*.app' -type d -print -quit)"
           test -n "$APP"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist" | grep -qx "com.operatorx.eventbooth"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Info.plist" | grep -qx "5"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Info.plist" | grep -qx "6"
           /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Info.plist" | grep -qx "1.0.0"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIconName" "$APP/Info.plist" | grep -qx "AppIcon"
           /usr/libexec/PlistBuddy -c "Print :ITSAppUsesNonExemptEncryption" "$APP/Info.plist" | grep -qx "false"
@@ -336,7 +345,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: EventBooth-IPA-build5
+          name: EventBooth-IPA-build6
           path: |
             /tmp/eventbooth-src/artifacts/export/*.ipa
             /tmp/eventbooth-src/artifacts/IPA_SHA256.txt
