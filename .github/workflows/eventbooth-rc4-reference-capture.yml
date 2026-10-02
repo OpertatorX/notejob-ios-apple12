@@ -1,0 +1,179 @@
+name: Event Booth RC4 reference capture
+
+on:
+  push:
+    branches:
+      - eventbooth-asc-internal
+    paths:
+      - ".github/workflows/eventbooth-rc4-reference-capture.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: macos-26
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct RC4 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/ebsrc /tmp/ebdd /tmp/ebshots
+          mkdir -p /tmp/ebsrc /tmp/ebshots
+          cat internal/eventbooth/chunks/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/base.tgz
+          echo "8a8d2094865775cdd5f1f6b302d527fbd2fda02008bed437706451fb83ee9cd2  /tmp/base.tgz" | shasum -a 256 -c -
+          tar -xzf /tmp/base.tgz -C /tmp/ebsrc
+          cp internal/eventbooth/overrides/CameraController.swift /tmp/ebsrc/EventBooth/Services/CameraController.swift
+          cat internal/eventbooth/rc2/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/rc2.tgz
+          echo "6ce64b55c2cbaaffcf43b6bf939d4368158ebf28ede0697f01c46e3913161868  /tmp/rc2.tgz" | shasum -a 256 -c -
+          tar -xzf /tmp/rc2.tgz -C /tmp/ebsrc
+          cat internal/eventbooth/rc4patch/part*.txt > /tmp/rc4.patch
+          cd /tmp/ebsrc
+          patch --batch -p1 < /tmp/rc4.patch
+          python3 "$GITHUB_WORKSPACE/internal/eventbooth/rc4hotfix.py"
+          curl -L --fail --retry 3 --silent --show-error \
+            'https://images.unsplash.com/photo-1503738692489-fff01e3e0f3e?auto=format&fit=crop&fm=jpg&q=82&w=2400' \
+            -o EventBooth/Resources/ScreenshotWedding.jpg
+          test -s EventBooth/Resources/ScreenshotWedding.jpg
+
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("EventBooth/App/EventBoothApp.swift")
+          s=p.read_text()
+          old='''        .task {
+          await purchases.loadProducts()
+          await purchases.refreshEntitlements()
+        }'''
+          new='''        .task {
+          guard !EBScreenshotMode.isEnabled else { return }
+          await purchases.loadProducts()
+          await purchases.refreshEntitlements()
+        }'''
+          if old in s:
+              p.write_text(s.replace(old,new,1))
+          PY
+
+      - name: Build simulator app
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          cd /tmp/ebsrc
+          xcodegen generate
+          set -o pipefail
+          xcodebuild \
+            -project EventBooth.xcodeproj \
+            -scheme EventBooth \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath /tmp/ebdd \
+            CODE_SIGNING_ALLOWED=NO \
+            build | tee /tmp/ebshots/build.log
+          if grep -E '/tmp/ebsrc/EventBooth/.*: warning:' /tmp/ebshots/build.log; then
+            echo "SOURCE_WARNING_GATE=FAIL"
+            exit 31
+          fi
+          APP="$(find /tmp/ebdd/Build/Products -path '*Debug-iphonesimulator/EventBooth.app' -type d -print -quit)"
+          test -d "$APP"
+          echo "SIM_APP=$APP" >> "$GITHUB_ENV"
+
+      - name: Pick simulators
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun simctl shutdown all >/dev/null 2>&1 || true
+          xcrun simctl list devices available -j > /tmp/devices.json
+          python3 - <<'PY' >/tmp/devices.env
+          import json
+          j=json.load(open("/tmp/devices.json"))
+          ds=[d for group in j["devices"].values() for d in group if d.get("isAvailable")]
+          phones=[d for d in ds if d["name"].startswith("iPhone")]
+          pads=[d for d in ds if d["name"].startswith("iPad")]
+          def pick(items, preferred):
+              for name in preferred:
+                  for d in items:
+                      if d["name"] == name:
+                          return d["udid"]
+              if not items:
+                  raise SystemExit("No matching simulator")
+              return items[0]["udid"]
+          print("IPHONE="+pick(phones,["iPhone 16 Pro Max","iPhone 16 Plus","iPhone 16 Pro"]))
+          print("IPAD="+pick(pads,["iPad Pro 13-inch (M4)","iPad Air 13-inch (M3)","iPad Pro 11-inch (M4)"]))
+          PY
+          cat /tmp/devices.env
+
+      - name: Capture iPhone FR and US
+        shell: bash
+        run: |
+          set -euo pipefail
+          source /tmp/devices.env
+          xcrun simctl boot "$IPHONE" || true
+          xcrun simctl bootstatus "$IPHONE" -b
+          xcrun simctl install "$IPHONE" "$SIM_APP"
+          xcrun simctl ui "$IPHONE" appearance light || true
+
+          snap () {
+            route="$1"; lang="$2"; locale="$3"; out="$4"
+            xcrun simctl terminate "$IPHONE" com.operatorx.eventbooth >/dev/null 2>&1 || true
+            SIMCTL_CHILD_EVENTBOOTH_SCREEN="$route" \
+              xcrun simctl launch "$IPHONE" com.operatorx.eventbooth \
+              -AppleLanguages "($lang)" -AppleLocale "$locale" >/dev/null
+            sleep 3
+            xcrun simctl io "$IPHONE" screenshot "/tmp/ebshots/$out"
+          }
+          snap events fr fr_FR iphone-events-fr.png
+          snap dashboard fr fr_FR iphone-dashboard-fr.png
+          snap library fr fr_FR iphone-library-fr.png
+          snap events en en_US iphone-events-en.png
+          snap dashboard en en_US iphone-dashboard-en.png
+          snap library en en_US iphone-library-en.png
+          xcrun simctl shutdown "$IPHONE"
+
+      - name: Capture iPad FR and US
+        shell: bash
+        run: |
+          set -euo pipefail
+          source /tmp/devices.env
+          xcrun simctl boot "$IPAD" || true
+          xcrun simctl bootstatus "$IPAD" -b
+          xcrun simctl install "$IPAD" "$SIM_APP"
+          xcrun simctl ui "$IPAD" appearance light || true
+
+          snap () {
+            route="$1"; lang="$2"; locale="$3"; out="$4"
+            xcrun simctl terminate "$IPAD" com.operatorx.eventbooth >/dev/null 2>&1 || true
+            SIMCTL_CHILD_EVENTBOOTH_SCREEN="$route" \
+              xcrun simctl launch "$IPAD" com.operatorx.eventbooth \
+              -AppleLanguages "($lang)" -AppleLocale "$locale" >/dev/null
+            sleep 3
+            xcrun simctl io "$IPAD" screenshot "/tmp/ebshots/$out"
+          }
+          snap booth fr fr_FR ipad-booth-fr.png
+          snap dashboard fr fr_FR ipad-dashboard-fr.png
+          snap guestbook fr fr_FR ipad-guestbook-fr.png
+          snap booth en en_US ipad-booth-en.png
+          snap dashboard en en_US ipad-dashboard-en.png
+          snap guestbook en en_US ipad-guestbook-en.png
+          xcrun simctl shutdown "$IPAD"
+
+      - name: Audit screenshot files
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find /tmp/ebshots -name '*.png' | wc -l | tr -d ' ')" -eq 12
+          sips -g pixelWidth -g pixelHeight /tmp/ebshots/*.png
+          echo "RC4_SCREENSHOT_CAPTURE=PASS"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: EventBooth-RC4-reference-captures
+          path: |
+            /tmp/ebshots/*.png
+            /tmp/ebshots/build.log
+          if-no-files-found: warn
+          retention-days: 30
