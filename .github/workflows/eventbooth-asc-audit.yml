@@ -101,3 +101,5 @@ jobs:
           })().catch(e=>{console.error('EVENTBOOTH_AUDIT=FAIL');console.error(e.stack||e.message);process.exit(1)})
           NODE
           node /tmp/audit.cjs
+
+# rerun after screenshots/storekit
