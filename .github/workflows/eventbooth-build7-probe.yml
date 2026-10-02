@@ -48,3 +48,5 @@ jobs:
           })().catch(e=>{console.error(e.stack||e.message);process.exit(1)})
           NODE
           node /tmp/probe.cjs
+
+# recheck after successful EAS submit
