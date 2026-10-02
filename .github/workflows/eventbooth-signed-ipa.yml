@@ -65,7 +65,7 @@ jobs:
           from pathlib import Path
           p=Path('/tmp/eventbooth-src/project.yml')
           import re
-          s=re.sub(r'CURRENT_PROJECT_VERSION:\\s*\\d+','CURRENT_PROJECT_VERSION: 10',p.read_text())
+          s=p.read_text().replace('CURRENT_PROJECT_VERSION: 5','CURRENT_PROJECT_VERSION: 10')
           p.write_text(s)
           PY
           grep -q 'CURRENT_PROJECT_VERSION: 10' /tmp/eventbooth-src/project.yml
