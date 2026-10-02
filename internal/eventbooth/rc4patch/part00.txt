@@ -1,0 +1,430 @@
+diff -ruN '--exclude=ScreenshotWedding.jpg' rc2src/EventBooth/App/RootView.swift rc4_work/EventBooth/App/RootView.swift
+--- rc2src/EventBooth/App/RootView.swift	2026-10-02 08:37:36.000000000 +0000
++++ rc4_work/EventBooth/App/RootView.swift	2026-10-02 12:02:20.000000000 +0000
+@@ -3,7 +3,7 @@
+ struct RootView: View {
+   @EnvironmentObject private var store: EventStore
+   @State private var selectedTab = 0
+-  @State private var showSplash = true
++  @State private var showSplash = !EBScreenshotMode.isEnabled
+ 
+   private var appLocale: Locale {
+     switch store.settings.languageCode {
+@@ -16,18 +16,26 @@
+   var body: some View {
+     ZStack {
+       Group {
+-        switch selectedTab {
+-        case 1:
+-          NavigationStack { GlobalLibraryView() }
+-        case 2:
+-          NavigationStack { SettingsView() }
+-        default:
+-          NavigationStack { EventsHomeView() }
++        if let route = EBScreenshotMode.route,
++          let demo = store.events.first
++        {
++          screenshotView(route, event: demo)
++        } else {
++          Group {
++            switch selectedTab {
++            case 1:
++              NavigationStack { GlobalLibraryView() }
++            case 2:
++              NavigationStack { SettingsView() }
++            default:
++              NavigationStack { EventsHomeView() }
++            }
++          }
++          .safeAreaInset(edge: .bottom, spacing: 0) {
++            RootTabBar(selection: $selectedTab)
++          }
+         }
+       }
+-      .safeAreaInset(edge: .bottom, spacing: 0) {
+-        RootTabBar(selection: $selectedTab)
+-      }
+ 
+       if showSplash {
+         EBSplashView()
+@@ -50,6 +58,33 @@
+         .environment(\.locale, appLocale)
+     }
+   }
++
++  @ViewBuilder
++  private func screenshotView(_ route: EBScreenshotRoute, event: BoothEvent) -> some View {
++    switch route {
++    case .events:
++      NavigationStack { EventsHomeView() }
++        .safeAreaInset(edge: .bottom, spacing: 0) {
++          RootTabBar(selection: $selectedTab)
++        }
++    case .booth:
++      BoothHomeView(event: event)
++    case .dashboard:
++      NavigationStack { EventDashboardView(eventID: event.id) }
++    case .library:
++      NavigationStack { MemoryLibraryView(eventID: event.id) }
++    case .guestbook:
++      GuestbookView(event: event)
++    case .voice:
++      VoiceMessageView(event: event)
++    case .export:
++      ExportView(eventID: event.id)
++    case .eventSettings:
++      NavigationStack { EventSettingsView(eventID: event.id) }
++    case .settings:
++      NavigationStack { SettingsView() }
++    }
++  }
+ }
+ 
+ private struct RootTabBar: View {
+diff -ruN '--exclude=ScreenshotWedding.jpg' rc2src/EventBooth/App/ScreenshotSupport.swift rc4_work/EventBooth/App/ScreenshotSupport.swift
+--- rc2src/EventBooth/App/ScreenshotSupport.swift	1970-01-01 00:00:00.000000000 +0000
++++ rc4_work/EventBooth/App/ScreenshotSupport.swift	2026-10-02 12:02:20.000000000 +0000
+@@ -0,0 +1,22 @@
++import Foundation
++
++enum EBScreenshotRoute: String {
++  case events
++  case booth
++  case dashboard
++  case library
++  case guestbook
++  case voice
++  case export
++  case eventSettings
++  case settings
++}
++
++enum EBScreenshotMode {
++  static var route: EBScreenshotRoute? {
++    guard let raw = ProcessInfo.processInfo.environment["EVENTBOOTH_SCREEN"] else { return nil }
++    return EBScreenshotRoute(rawValue: raw)
++  }
++
++  static var isEnabled: Bool { route != nil }
++}
+diff -ruN '--exclude=ScreenshotWedding.jpg' rc2src/EventBooth/DesignSystem/DesignSystem.swift rc4_work/EventBooth/DesignSystem/DesignSystem.swift
+--- rc2src/EventBooth/DesignSystem/DesignSystem.swift	2026-10-02 08:37:36.000000000 +0000
++++ rc4_work/EventBooth/DesignSystem/DesignSystem.swift	2026-10-02 12:02:20.000000000 +0000
+@@ -51,19 +51,97 @@
+   }
+ }
+ 
++struct EBLeafMark: View {
++  var color: Color = .white
++
++  var body: some View {
++    Canvas { context, size in
++      let w = size.width
++      let h = size.height
++
++      var stem = Path()
++      stem.move(to: CGPoint(x: w * 0.10, y: h * 0.88))
++      stem.addCurve(
++        to: CGPoint(x: w * 0.84, y: h * 0.12),
++        control1: CGPoint(x: w * 0.32, y: h * 0.73),
++        control2: CGPoint(x: w * 0.56, y: h * 0.35)
++      )
++      context.stroke(
++        stem,
++        with: .color(color),
++        style: StrokeStyle(lineWidth: 1.8, lineCap: .round)
++      )
++
++      let leaves: [(CGFloat, CGFloat, CGFloat)] = [
++        (0.28, 0.67, -28), (0.37, 0.57, 32),
++        (0.48, 0.46, -32), (0.57, 0.37, 28),
++        (0.67, 0.27, -34), (0.74, 0.20, 30)
++      ]
++
++      for (x, y, deg) in leaves {
++        let c = CGPoint(x: w * x, y: h * y)
++        let rw = w * 0.18
++        let rh = h * 0.10
++        var leaf = Path(
++          ellipseIn: CGRect(
++            x: c.x - rw / 2,
++            y: c.y - rh / 2,
++            width: rw,
++            height: rh
++          )
++        )
++
++        var transform = CGAffineTransform(translationX: -c.x, y: -c.y)
++        transform = transform.rotated(by: Angle.degrees(deg).radians)
++        transform = transform.translatedBy(x: c.x, y: c.y)
++        leaf = leaf.applying(transform)
++
++        context.stroke(
++          leaf,
++          with: .color(color),
++          style: StrokeStyle(lineWidth: 1.5)
++        )
++      }
++    }
++    .aspectRatio(1.25, contentMode: .fit)
++  }
++}
++
+ struct EBSplashView: View {
+   var body: some View {
+     ZStack {
+-      Color.ebIvory.ignoresSafeArea()
++      LinearGradient(
++        colors: [
++          Color(red: 0.89, green: 0.82, blue: 0.71),
++          Color(red: 0.69, green: 0.55, blue: 0.40),
++          Color(red: 0.24, green: 0.20, blue: 0.16)
++        ],
++        startPoint: .topTrailing,
++        endPoint: .bottomLeading
++      )
++      .ignoresSafeArea()
++
++      RadialGradient(
++        colors: [.white.opacity(0.28), .clear],
++        center: .topTrailing,
++        startRadius: 10,
++        endRadius: 520
++      )
++      .ignoresSafeArea()
++
+       VStack(spacing: 18) {
+-        Image(systemName: "leaf")
+-          .font(.system(size: 44, weight: .ultraLight))
+-          .foregroundStyle(Color.ebTaupe)
+-        Text("Event Booth").ebSerif(38).foregroundStyle(Color.ebCharcoal)
++        EBLeafMark(color: .white.opacity(0.92))
++          .frame(width: 60, height: 48)
++
++        Text("Event Booth")
++          .ebSerif(40)
++          .foregroundStyle(.white)
++          .shadow(color: .black.opacity(0.12), radius: 8, y: 2)
++
+         Text("splash.subtitle")
+-          .font(.system(size: 12, weight: .medium))
+-          .tracking(2.2)
+-          .foregroundStyle(Color.ebSecondary)
++          .font(.system(size: 11, weight: .medium))
++          .tracking(2.4)
++          .foregroundStyle(.white.opacity(0.84))
+       }
+     }
+   }
+@@ -129,7 +207,7 @@
+         Image(systemName: icon)
+           .font(.system(size: 28, weight: .semibold))
+           .foregroundStyle(Color.ebCharcoal)
+-          .frame(width: 72, height: 72)
++          .frame(width: 70, height: 70)
+           .background(Color.ebIvory, in: Circle())
+         Text(title)
+           .font(.system(size: 22, weight: .medium))
+@@ -143,10 +221,10 @@
+           .multilineTextAlignment(.center)
+       }
+       .padding(.horizontal, 14)
+-      .frame(maxWidth: .infinity, minHeight: 220)
++      .frame(maxWidth: .infinity, minHeight: 214)
+       .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+       .background(
+-        Color.black.opacity(0.30), in: RoundedRectangle(cornerRadius: 28, style: .continuous)
++        Color.black.opacity(0.34), in: RoundedRectangle(cornerRadius: 28, style: .continuous)
+       )
+       .overlay {
+         RoundedRectangle(cornerRadius: 28, style: .continuous)
+diff -ruN '--exclude=ScreenshotWedding.jpg' rc2src/EventBooth/Features/Booth/BoothHomeView.swift rc4_work/EventBooth/Features/Booth/BoothHomeView.swift
+--- rc2src/EventBooth/Features/Booth/BoothHomeView.swift	2026-10-02 08:50:50.000000000 +0000
++++ rc4_work/EventBooth/Features/Booth/BoothHomeView.swift	2026-10-02 12:02:20.000000000 +0000
+@@ -3,12 +3,14 @@
+ struct BoothHomeView: View {
+   @Environment(\.locale) private var locale
+   @EnvironmentObject private var store: EventStore
++  @EnvironmentObject private var purchases: PurchaseManager
+   let event: BoothEvent
+ 
+   @State private var destination: BoothDestination?
+   @State private var showingPIN = false
+   @State private var pin = ""
+   @State private var pinError = false
++  @State private var showingPaywall = false
+ 
+   enum BoothDestination: String, Identifiable {
+     case photo, video, voice, guestbook
+@@ -28,6 +30,9 @@
+         VStack(spacing: 20) {
+           topBar
+           titleBlock
++          if isFreeTrial {
++            freeTrialBadge
++          }
+           Spacer(minLength: 8)
+           actionRow
+           footer
+@@ -45,6 +50,9 @@
+       case .guestbook: GuestbookView(event: event)
+       }
+     }
++    .sheet(isPresented: $showingPaywall) {
++      PaywallView(eventID: event.id)
++    }
+     .alert("admin.title", isPresented: $showingPIN) {
+       SecureField("admin.pin", text: $pin).keyboardType(.numberPad)
+       Button("common.cancel", role: .cancel) { pin = "" }
+@@ -67,10 +75,9 @@
+ 
+   private var topBar: some View {
+     HStack {
+-      Image(systemName: "leaf")
+-        .font(.system(size: 34, weight: .ultraLight))
+-        .foregroundStyle(.white)
+-        .frame(width: 56, height: 56, alignment: .leading)
++      EBLeafMark(color: .white)
++        .frame(width: 58, height: 46)
++        .frame(width: 66, height: 56, alignment: .leading)
+         .contentShape(Rectangle())
+         .onLongPressGesture(minimumDuration: 1.8) { showingPIN = true }
+ 
+@@ -107,7 +114,7 @@
+ 
+       if store.settings.showEventName {
+         Text(event.name)
+-          .ebSerif(66)
++          .ebSerif(72)
+           .foregroundStyle(.white)
+           .minimumScaleFactor(0.5)
+           .lineLimit(1)
+@@ -148,7 +155,7 @@
+           title: "booth.guestbook",
+           subtitle: "booth.guestbook.sub"
+         ) {
+-          destination = .guestbook
++          open(.guestbook)
+         }
+       }
+     }
+@@ -158,9 +165,9 @@
+   private var footer: some View {
+     VStack(spacing: 4) {
+       Text("booth.thankyou")
+-        .font(.system(size: 31, design: .serif))
+-        .italic()
++        .font(.custom("Snell Roundhand", size: 38))
+         .foregroundStyle(.white)
++        .shadow(color: .black.opacity(0.18), radius: 8, y: 2)
+       Text("booth.thankyou.sub")
+         .font(.system(size: 10, weight: .medium))
+         .tracking(4)
+@@ -222,6 +229,37 @@
+     }
+   }
+ 
++  private var isFreeTrial: Bool {
++    !event.isUnlocked && !purchases.isPro
++  }
++
++  private var freeTrialBadge: some View {
++    let remaining = store.remainingFreeCaptures(for: event.id)
++    return HStack(spacing: 7) {
++      Image(systemName: "sparkles")
++      Text(
++        String(
++          format: String(localized: "booth.testmode", locale: locale),
++          remaining
++        )
++      )
++    }
++    .font(.system(size: 11, weight: .semibold))
++    .foregroundStyle(.white)
++    .padding(.horizontal, 12)
++    .frame(height: 30)
++    .background(Color.black.opacity(0.22), in: Capsule())
++    .overlay { Capsule().stroke(Color.white.opacity(0.14), lineWidth: 0.8) }
++  }
++
++  private func open(_ target: BoothDestination) {
++    if event.isUnlocked || purchases.isPro || store.canUseFreeTrial(for: event.id) {
++      destination = target
++    } else {
++      showingPaywall = true
++    }
++  }
++
+   private var languageLabel: String {
+     let code = locale.language.languageCode?.identifier.uppercased()
+     return code == "FR" ? "FR" : "EN"
+diff -ruN '--exclude=ScreenshotWedding.jpg' rc2src/EventBooth/Features/Camera/CameraCaptureFlow.swift rc4_work/EventBooth/Features/Camera/CameraCaptureFlow.swift
+--- rc2src/EventBooth/Features/Camera/CameraCaptureFlow.swift	2026-10-02 08:48:27.000000000 +0000
++++ rc4_work/EventBooth/Features/Camera/CameraCaptureFlow.swift	2026-10-02 12:02:20.000000000 +0000
+@@ -224,7 +224,9 @@
+         withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+           countdown = value
+         }
+-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
++        if store.settings.soundEnabled {
++          UIImpactFeedbackGenerator(style: .light).impactOccurred()
++        }
+         try? await Task.sleep(for: .seconds(1))
+       }
+ 
+@@ -232,7 +234,9 @@
+       camera.capturePhoto(flashEnabled: flashEnabled) { data in
+         guard let data else { return }
+         photoData = normalizedJPEG(data)
+-        UINotificationFeedbackGenerator().notificationOccurred(.success)
++        if store.settings.soundEnabled {
++          UINotificationFeedbackGenerator().notificationOccurred(.success)
++        }
+       }
+     }
+   }
+@@ -403,6 +407,7 @@
+ }
+ 
+ private struct SavedMemoryView: View {
++  @Environment(\.locale) private var locale
+   @EnvironmentObject private var store: EventStore
+ 
+   let event: BoothEvent
+diff -ruN '--exclude=ScreenshotWedding.jpg' rc2src/EventBooth/Features/CreateEvent/CreateEventView.swift rc4_work/EventBooth/Features/CreateEvent/CreateEventView.swift
+--- rc2src/EventBooth/Features/CreateEvent/CreateEventView.swift	2026-10-02 08:48:27.000000000 +0000
++++ rc4_work/EventBooth/Features/CreateEvent/CreateEventView.swift	2026-10-02 12:02:20.000000000 +0000
+@@ -321,7 +321,10 @@
+       EBPrimaryButton(title: "booth.start") {
+         guard let createdEvent else { return }
+         let current = store.event(id: createdEvent.id)
+-        if current?.isUnlocked == true || purchases.isPro {
++        if current?.isUnlocked == true
++          || purchases.isPro
++          || store.canUseFreeTrial(for: createdEvent.id)
++        {
+           store.activeBoothEventID = createdEvent.id
+           dismiss()
+         } else {
+diff -ruN '--exclude=ScreenshotWedding.jpg' rc2src/EventBooth/Features/Dashboard/EventDashboardView.swift rc4_work/EventBooth/Features/Dashboard/EventDashboardView.swift
+--- rc2src/EventBooth/Features/Dashboard/EventDashboardView.swift	2026-10-02 08:48:27.000000000 +0000
++++ rc4_work/EventBooth/Features/Dashboard/EventDashboardView.swift	2026-10-02 12:02:20.000000000 +0000
+@@ -108,7 +108,7 @@
+   }
+ 
+   private func start(_ event: BoothEvent) {
+-    if event.isUnlocked || purchases.isPro {
++    if event.isUnlocked || purchases.isPro || store.canUseFreeTrial(for: event.id) {
+       store.activeBoothEventID = event.id
+     } else {
+       showingPaywall = true
+diff -ruN '--exclude=ScreenshotWedding.jpg' rc2src/EventBooth/Features/Events/EventsHomeView.swift rc4_work/EventBooth/Features/Events/EventsHomeView.swift
+--- rc2src/EventBooth/Features/Events/EventsHomeView.swift	2026-10-02 08:48:27.000000000 +0000
++++ rc4_work/EventBooth/Features/Events/EventsHomeView.swift	2026-10-02 12:02:20.000000000 +0000
+@@ -96,6 +96,8 @@
+ }
+ 
+ struct EventCard: View {
++  @Environment(\.locale) private var locale
++  @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+   @EnvironmentOb
