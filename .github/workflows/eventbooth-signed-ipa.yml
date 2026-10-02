@@ -1,4 +1,4 @@
-name: Event Booth RC3 build 3 signed IPA
+name: Event Booth RC4 build 4 signed IPA
 
 on:
   push:
@@ -41,27 +41,20 @@ jobs:
           echo "6ce64b55c2cbaaffcf43b6bf939d4368158ebf28ede0697f01c46e3913161868  /tmp/eventbooth-rc2-overlay.tar.gz" | shasum -a 256 -c -
           tar -xzf /tmp/eventbooth-rc2-overlay.tar.gz -C /tmp/eventbooth-src
 
-          # Apply RC3 audit patch: visual parity, screenshot fixtures, compile fixes,
-          # free test captures, settings polish and PDF preview.
-          base64 -D < internal/eventbooth/rc3.patch.gz.b64 > /tmp/eventbooth-rc3.patch.gz
-          echo "49a2f3ecc3b2e21c0b1e97bad5a90c68b9b96ca75bcad7ccb9edfd53644364f0  /tmp/eventbooth-rc3.patch.gz" | shasum -a 256 -c -
-          gunzip -c /tmp/eventbooth-rc3.patch.gz > /tmp/eventbooth-rc3.patch
+          # Apply RC4 zero-complacency audit patch directly on top of RC2.
+          cat internal/eventbooth/rc4patch/part*.txt > /tmp/eventbooth-rc4.patch
           cd /tmp/eventbooth-src
-          patch --batch -p4 < /tmp/eventbooth-rc3.patch
+          patch --batch -p1 < /tmp/eventbooth-rc4.patch
 
-          # Swift 6: AVAudioRecorderDelegate is unnecessary here and its Obj-C
-          # callback crosses the MainActor boundary. Recording is stopped explicitly.
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('/tmp/eventbooth-src/EventBooth/Services/AudioRecorderService.swift')
-          s=p.read_text()
-          s=s.replace('final class AudioRecorderService: NSObject, ObservableObject, AVAudioRecorderDelegate {','final class AudioRecorderService: NSObject, ObservableObject {')
-          s=s.replace('        recorder.delegate = self\\n','')
-          s=s.replace('''\\n  func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {\\n    guard isRecording else { return }\\n    stop()\\n  }\\n''','')
-          p.write_text(s)
-          PY
-          sed -i '' '/recorder\.delegate = self/d' /tmp/eventbooth-src/EventBooth/Services/AudioRecorderService.swift
-          cp "$GITHUB_WORKSPACE/internal/eventbooth/overrides/AudioRecorderService.swift" /tmp/eventbooth-src/EventBooth/Services/AudioRecorderService.swift
+          # Bundle a real golden-hour wedding image for the deterministic screenshot fixture.
+          curl -L --fail --retry 3 --silent --show-error \
+            'https://images.unsplash.com/photo-1503738692489-fff01e3e0f3e?auto=format&fit=crop&fm=jpg&q=82&w=2400' \
+            -o /tmp/eventbooth-src/EventBooth/Resources/ScreenshotWedding.jpg
+          test -s /tmp/eventbooth-src/EventBooth/Resources/ScreenshotWedding.jpg
+          file /tmp/eventbooth-src/EventBooth/Resources/ScreenshotWedding.jpg | grep -qi 'JPEG image data'
+          grep -q 'CURRENT_PROJECT_VERSION: 4' /tmp/eventbooth-src/project.yml
+          test "$(grep -c ' = ' /tmp/eventbooth-src/EventBooth/Resources/fr.lproj/Localizable.strings)" -eq 157
+          test "$(grep -c ' = ' /tmp/eventbooth-src/EventBooth/Resources/en.lproj/Localizable.strings)" -eq 157
           cd "$GITHUB_WORKSPACE"
 
           # Apple requires a complete iOS AppIcon catalog + CFBundleIconName.
@@ -110,9 +103,9 @@ jobs:
           /usr/libexec/PlistBuddy -c "Delete :CFBundleIconName" /tmp/eventbooth-src/EventBooth/Info.plist 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string AppIcon" /tmp/eventbooth-src/EventBooth/Info.plist
 
-          echo "=== audited RC3 project.yml ==="
+          echo "=== audited RC4 project.yml ==="
           cat /tmp/eventbooth-src/project.yml
-          echo "=== audited RC3 Info.plist ==="
+          echo "=== audited RC4 Info.plist ==="
           plutil -p /tmp/eventbooth-src/EventBooth/Info.plist
           echo "=== localization counts ==="
           grep -c ' = ' /tmp/eventbooth-src/EventBooth/Resources/fr.lproj/Localizable.strings
@@ -306,7 +299,7 @@ jobs:
           APP="$(find /tmp/eventbooth-ipa-check/Payload -maxdepth 1 -name '*.app' -type d -print -quit)"
           test -n "$APP"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist" | grep -qx "com.operatorx.eventbooth"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Info.plist" | grep -qx "3"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Info.plist" | grep -qx "4"
           /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Info.plist" | grep -qx "1.0.0"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIconName" "$APP/Info.plist" | grep -qx "AppIcon"
           /usr/libexec/PlistBuddy -c "Print :ITSAppUsesNonExemptEncryption" "$APP/Info.plist" | grep -qx "false"
@@ -332,7 +325,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: EventBooth-IPA-build3
+          name: EventBooth-IPA-build4
           path: |
             /tmp/eventbooth-src/artifacts/export/*.ipa
             /tmp/eventbooth-src/artifacts/IPA_SHA256.txt
