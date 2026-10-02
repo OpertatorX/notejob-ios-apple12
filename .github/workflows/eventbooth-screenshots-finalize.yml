@@ -1,0 +1,172 @@
+name: Event Booth screenshots finalize
+
+on:
+  push:
+    branches: [eventbooth-asc-internal]
+    paths:
+      - ".github/workflows/eventbooth-screenshots-finalize.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      OX_EAS_PROJECT_ID: "a8ec463b-a530-41c9-af1f-c5499359f881"
+      OX_PROJECT_SLUG: "ox-invoice"
+      OX_BUNDLE_ID: "com.operatorx.oxinvoice"
+      APP_ID: "6818422621"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "24" }
+
+      - name: Download previously captured simulator screenshots
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/raw-shots
+          mkdir -p /tmp/raw-shots
+          gh run download 36980601292 \
+            --repo OpertatorX/notejob-ios-apple12 \
+            --name EventBooth-AppStore-screenshots \
+            --dir /tmp/raw-shots
+          find /tmp/raw-shots -type f -maxdepth 6 -print
+          test -n "$(find /tmp/raw-shots -name 'iphone-fr.png' -print -quit)"
+          test -n "$(find /tmp/raw-shots -name 'iphone-en.png' -print -quit)"
+          test -n "$(find /tmp/raw-shots -name 'ipad-fr.png' -print -quit)"
+          test -n "$(find /tmp/raw-shots -name 'ipad-en.png' -print -quit)"
+
+      - name: Render App Store promo screenshots
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/eb-venv
+          /tmp/eb-venv/bin/python -m pip install --disable-pip-version-check Pillow >/dev/null
+          export IPHONE_FR="$(find /tmp/raw-shots -name 'iphone-fr.png' -print -quit)"
+          export IPHONE_EN="$(find /tmp/raw-shots -name 'iphone-en.png' -print -quit)"
+          export IPAD_FR="$(find /tmp/raw-shots -name 'ipad-fr.png' -print -quit)"
+          export IPAD_EN="$(find /tmp/raw-shots -name 'ipad-en.png' -print -quit)"
+          /tmp/eb-venv/bin/python - <<'PY'
+          from PIL import Image,ImageDraw,ImageFont
+          import os
+          os.makedirs('/tmp/store-shots/fr-FR',exist_ok=True)
+          os.makedirs('/tmp/store-shots/en-US',exist_ok=True)
+          os.makedirs('/tmp/store-shots-ipad/fr-FR',exist_ok=True)
+          os.makedirs('/tmp/store-shots-ipad/en-US',exist_ok=True)
+          reg='/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+          bold='/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
+          def make(src,out,size,title,sub):
+              W,H=size
+              im=Image.new('RGB',size,'#F5EFE6')
+              d=ImageDraw.Draw(im)
+              fb=ImageFont.truetype(bold,int(W*.052))
+              fr=ImageFont.truetype(reg,int(W*.025))
+              d.text((W//2,int(H*.045)),title,font=fb,fill='#3A2B22',anchor='ma',align='center')
+              d.text((W//2,int(H*.115)),sub,font=fr,fill='#7B6758',anchor='ma',align='center')
+              raw=Image.open(src).convert('RGB')
+              maxw,maxh=int(W*.86),int(H*.76)
+              raw.thumbnail((maxw,maxh),Image.Resampling.LANCZOS)
+              x=(W-raw.width)//2
+              y=int(H*.19)+(maxh-raw.height)//2
+              shadow=Image.new('RGBA',size,(0,0,0,0))
+              sd=ImageDraw.Draw(shadow)
+              sd.rounded_rectangle((x-18,y-18,x+raw.width+18,y+raw.height+18),radius=36,fill=(0,0,0,35))
+              im=Image.alpha_composite(im.convert('RGBA'),shadow).convert('RGB')
+              im.paste(raw,(x,y))
+              im.save(out,'JPEG',quality=95,subsampling=0)
+          make(os.environ['IPHONE_FR'],'/tmp/store-shots/fr-FR/01.jpg',(1242,2688),'Vos souvenirs, réunis','Photo, vidéo, voix et livre d’or')
+          make(os.environ['IPHONE_EN'],'/tmp/store-shots/en-US/01.jpg',(1242,2688),'Every memory, together','Photo, video, voice and guestbook')
+          make(os.environ['IPAD_FR'],'/tmp/store-shots-ipad/fr-FR/01.jpg',(2064,2752),'Transformez votre iPad en Event Booth','Une borne élégante pour tous vos invités')
+          make(os.environ['IPAD_EN'],'/tmp/store-shots-ipad/en-US/01.jpg',(2064,2752),'Turn your iPad into Event Booth','An elegant memory booth for every guest')
+          PY
+          find /tmp/store-shots /tmp/store-shots-ipad -type f -ls
+
+      - name: Install EAS library
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/easlib
+          npm install --prefix /tmp/easlib eas-cli@latest --ignore-scripts --no-audit --no-fund >/dev/null
+
+      - name: Upload screenshots to App Store Connect
+        run: |
+          set -euo pipefail
+          cat >/tmp/upload.cjs <<'NODE'
+          const fs=require('fs'),crypto=require('crypto'),path=require('path');
+          const E='/tmp/easlib/node_modules/eas-cli/build';
+          const {createGraphqlClient}=require(E+'/commandUtils/context/contextUtils/createGraphqlClient.js');
+          const {getOwnerAccountForProjectIdAsync}=require(E+'/project/projectUtils.js');
+          const {getAscApiKeyForAppSubmissionsAsync}=require(E+'/credentials/ios/api/GraphqlClient.js');
+          const {AppStoreConnectApiKeyQuery}=require(E+'/graphql/queries/AppStoreConnectApiKeyQuery.js');
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          function b64url(x){return Buffer.from(x).toString('base64url')}
+          function jwtFor(k){const n=Math.floor(Date.now()/1000),h={alg:'ES256',kid:k.keyIdentifier,typ:'JWT'},p={iss:k.issuerIdentifier,iat:n-5,exp:n+900,aud:'appstoreconnect-v1'};const s=b64url(JSON.stringify(h))+'.'+b64url(JSON.stringify(p));return s+'.'+crypto.sign('sha256',Buffer.from(s),{key:k.keyP8,dsaEncoding:'ieee-p1363'}).toString('base64url')}
+          async function req(tok,m,u,b=null,ok=[200]){
+            const full=u.startsWith('http')?u:'https://api.appstoreconnect.apple.com'+u;
+            const headers=full.startsWith('https://api.appstoreconnect.apple.com')?{Authorization:'Bearer '+tok,'Content-Type':'application/json'}:{};
+            const r=await fetch(full,{method:m,headers,body:b?(Buffer.isBuffer(b)?b:JSON.stringify(b)):undefined});
+            const t=await r.text();let j=null;try{j=t?JSON.parse(t):null}catch{j=t}
+            if(!ok.includes(r.status))throw new Error(m+' '+u+' '+r.status+' '+JSON.stringify(j));
+            return{status:r.status,data:j}
+          }
+          async function all(tok,u){let n=u,o=[];while(n){const r=await req(tok,'GET',n);o.push(...(r.data?.data||[]));n=r.data?.links?.next||null}return o}
+          async function uploadAsset(tok,shot,bytes){
+            for(const op of shot.attributes.uploadOperations||[]){
+              const off=Number(op.offset||0),len=Number(op.length||0);
+              const chunk=bytes.subarray(off,off+len),headers={};
+              for(const h of op.requestHeaders||[])headers[h.name]=h.value;
+              const rr=await fetch(op.url,{method:op.method||'PUT',headers,body:chunk});
+              if(!rr.ok)throw new Error('PUT '+rr.status+' '+await rr.text());
+            }
+            await req(tok,'PATCH','/v1/appScreenshots/'+shot.id,{data:{type:'appScreenshots',id:shot.id,attributes:{uploaded:true}}});
+          }
+          async function uploadSet(tok,loc,locale,type,file){
+            let sets=await all(tok,'/v1/appStoreVersionLocalizations/'+loc.id+'/appScreenshotSets?fields%5BappScreenshotSets%5D=screenshotDisplayType&limit=50');
+            let set=sets.find(x=>x.attributes?.screenshotDisplayType===type);
+            if(!set)set=(await req(tok,'POST','/v1/appScreenshotSets',{data:{type:'appScreenshotSets',attributes:{screenshotDisplayType:type},relationships:{appStoreVersionLocalization:{data:{type:'appStoreVersionLocalizations',id:loc.id}}}}},[201])).data.data;
+            for(const old of await all(tok,'/v1/appScreenshotSets/'+set.id+'/appScreenshots?limit=50'))await req(tok,'DELETE','/v1/appScreenshots/'+old.id,null,[204]);
+            const bytes=fs.readFileSync(file);
+            const shot=(await req(tok,'POST','/v1/appScreenshots',{data:{type:'appScreenshots',attributes:{fileName:path.basename(file),fileSize:bytes.length},relationships:{appScreenshotSet:{data:{type:'appScreenshotSets',id:set.id}}}}},[201])).data.data;
+            await uploadAsset(tok,shot,bytes);
+            for(let i=0;i<50;i++){
+              const live=await all(tok,'/v1/appScreenshotSets/'+set.id+'/appScreenshots?fields%5BappScreenshots%5D=fileName,assetDeliveryState&limit=50');
+              const st=live[0]?.attributes?.assetDeliveryState?.state||'UNKNOWN';
+              console.log('VERIFY='+locale+'|'+type+'|'+st);
+              if(st==='COMPLETE')return;
+              if(st==='FAILED')throw new Error('Screenshot processing failed '+locale+' '+type);
+              await sleep(2500);
+            }
+            throw new Error('Screenshot timeout '+locale+' '+type);
+          }
+          (async()=>{
+            const gql=createGraphqlClient({accessToken:process.env.EXPO_TOKEN,sessionSecret:null});
+            const account=await getOwnerAccountForProjectIdAsync(gql,process.env.OX_EAS_PROJECT_ID);
+            const frag=await getAscApiKeyForAppSubmissionsAsync(gql,{account,projectName:process.env.OX_PROJECT_SLUG,bundleIdentifier:process.env.OX_BUNDLE_ID});
+            const key=await AppStoreConnectApiKeyQuery.getByIdAsync(gql,frag.id),tok=jwtFor(key);
+            const vers=await all(tok,'/v1/apps/'+process.env.APP_ID+'/appStoreVersions?filter%5Bplatform%5D=IOS&filter%5BversionString%5D=1.0&fields%5BappStoreVersions%5D=versionString');
+            if(!vers.length)throw new Error('Version 1.0 missing');
+            const locs=await all(tok,'/v1/appStoreVersions/'+vers[0].id+'/appStoreVersionLocalizations?fields%5BappStoreVersionLocalizations%5D=locale&limit=50');
+            for(const locale of ['fr-FR','en-US']){
+              const loc=locs.find(x=>x.attributes?.locale===locale);
+              if(!loc)throw new Error('Missing localization '+locale);
+              await uploadSet(tok,loc,locale,'APP_IPHONE_65','/tmp/store-shots/'+locale+'/01.jpg');
+              await uploadSet(tok,loc,locale,'APP_IPAD_PRO_3GEN_129','/tmp/store-shots-ipad/'+locale+'/01.jpg');
+            }
+            console.log('EVENTBOOTH_SCREENSHOTS=PASS');
+          })().catch(e=>{console.error('EVENTBOOTH_SCREENSHOTS=FAIL');console.error(e.stack||e.message);process.exit(1)})
+          NODE
+          node /tmp/upload.cjs
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: EventBooth-AppStore-screenshots-final
+          path: |
+            /tmp/store-shots/**/*.jpg
+            /tmp/store-shots-ipad/**/*.jpg
+          if-no-files-found: warn
+          retention-days: 30
