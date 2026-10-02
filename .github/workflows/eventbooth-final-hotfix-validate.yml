@@ -43,3 +43,4 @@ jobs:
           grep -q 'Image("BrandMark")' "$ROOT/EventBooth/Features/Booth/BoothHomeView.swift"
           grep -q 'Image("BrandMark")' "$ROOT/EventBooth/Features/Events/EventsHomeView.swift"
           echo "EVENTBOOTH_FINAL_HOTFIX_VALIDATE=PASS"
+          # validation trigger: deterministic premium-icon reconstruction v2
