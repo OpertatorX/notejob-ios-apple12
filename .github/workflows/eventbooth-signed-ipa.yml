@@ -1,4 +1,4 @@
-name: Event Booth signed IPA internal
+name: Event Booth signed IPA fixed
 
 on:
   push:
@@ -34,6 +34,53 @@ jobs:
           echo "8a8d2094865775cdd5f1f6b302d527fbd2fda02008bed437706451fb83ee9cd2  /tmp/eventbooth-src.tar.gz" | shasum -a 256 -c -
           tar -xzf /tmp/eventbooth-src.tar.gz -C /tmp/eventbooth-src
           cp internal/eventbooth/overrides/CameraController.swift /tmp/eventbooth-src/EventBooth/Services/CameraController.swift
+
+          # Apple requires a complete iOS AppIcon catalog + CFBundleIconName.
+          ICONDIR=/tmp/eventbooth-src/EventBooth/Resources/Assets.xcassets/AppIcon.appiconset
+          SRCICON="$ICONDIR/AppIcon-1024.png"
+          test -s "$SRCICON"
+          for spec in \
+            "20 2 AppIcon-20@2x.png" "20 3 AppIcon-20@3x.png" \
+            "29 2 AppIcon-29@2x.png" "29 3 AppIcon-29@3x.png" \
+            "40 2 AppIcon-40@2x.png" "40 3 AppIcon-40@3x.png" \
+            "60 2 AppIcon-60@2x.png" "60 3 AppIcon-60@3x.png" \
+            "20 1 AppIcon-20.png" "29 1 AppIcon-29.png" "40 1 AppIcon-40.png" \
+            "76 1 AppIcon-76.png" "76 2 AppIcon-76@2x.png" \
+            "83.5 2 AppIcon-83.5@2x.png"; do
+            set -- $spec
+            px=$(python3 - <<PY
+print(int(float("$1")*int("$2")))
+PY
+)
+            sips -z "$px" "$px" "$SRCICON" --out "$ICONDIR/$3" >/dev/null
+          done
+          cat > "$ICONDIR/Contents.json" <<'JSON'
+          {
+            "images": [
+              {"idiom":"iphone","size":"20x20","scale":"2x","filename":"AppIcon-20@2x.png"},
+              {"idiom":"iphone","size":"20x20","scale":"3x","filename":"AppIcon-20@3x.png"},
+              {"idiom":"iphone","size":"29x29","scale":"2x","filename":"AppIcon-29@2x.png"},
+              {"idiom":"iphone","size":"29x29","scale":"3x","filename":"AppIcon-29@3x.png"},
+              {"idiom":"iphone","size":"40x40","scale":"2x","filename":"AppIcon-40@2x.png"},
+              {"idiom":"iphone","size":"40x40","scale":"3x","filename":"AppIcon-40@3x.png"},
+              {"idiom":"iphone","size":"60x60","scale":"2x","filename":"AppIcon-60@2x.png"},
+              {"idiom":"iphone","size":"60x60","scale":"3x","filename":"AppIcon-60@3x.png"},
+              {"idiom":"ipad","size":"20x20","scale":"1x","filename":"AppIcon-20.png"},
+              {"idiom":"ipad","size":"20x20","scale":"2x","filename":"AppIcon-20@2x.png"},
+              {"idiom":"ipad","size":"29x29","scale":"1x","filename":"AppIcon-29.png"},
+              {"idiom":"ipad","size":"29x29","scale":"2x","filename":"AppIcon-29@2x.png"},
+              {"idiom":"ipad","size":"40x40","scale":"1x","filename":"AppIcon-40.png"},
+              {"idiom":"ipad","size":"40x40","scale":"2x","filename":"AppIcon-40@2x.png"},
+              {"idiom":"ipad","size":"76x76","scale":"1x","filename":"AppIcon-76.png"},
+              {"idiom":"ipad","size":"76x76","scale":"2x","filename":"AppIcon-76@2x.png"},
+              {"idiom":"ipad","size":"83.5x83.5","scale":"2x","filename":"AppIcon-83.5@2x.png"},
+              {"idiom":"ios-marketing","size":"1024x1024","scale":"1x","filename":"AppIcon-1024.png"}
+            ],
+            "info": {"author":"xcode","version":1}
+          }
+          JSON
+          /usr/libexec/PlistBuddy -c "Delete :CFBundleIconName" /tmp/eventbooth-src/EventBooth/Info.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string AppIcon" /tmp/eventbooth-src/EventBooth/Info.plist
 
       - name: Install tooling
         run: |
@@ -210,7 +257,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: EventBooth-IPA-build2
+          name: EventBooth-IPA-build2-fixed
           path: |
             /tmp/eventbooth-src/artifacts/export/*.ipa
             /tmp/eventbooth-src/artifacts/IPA_SHA256.txt
