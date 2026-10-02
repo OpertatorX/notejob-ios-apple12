@@ -71,8 +71,6 @@ jobs:
           i=pick(pads,['iPad Pro 13-inch (M4)','iPad Air 13-inch (M3)','iPad Pro 11-inch (M4)'])
           print('IPHONE='+p['udid'])
           print('IPAD='+i['udid'])
-          print('IPHONE_NAME='+p['name'])
-          print('IPAD_NAME='+i['name'])
           PY
           cat /tmp/devices.env
 
