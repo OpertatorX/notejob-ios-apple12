@@ -61,6 +61,7 @@ jobs:
           p.write_text(s)
           PY
           sed -i '' '/recorder\.delegate = self/d' /tmp/eventbooth-src/EventBooth/Services/AudioRecorderService.swift
+          cp "$GITHUB_WORKSPACE/internal/eventbooth/overrides/AudioRecorderService.swift" /tmp/eventbooth-src/EventBooth/Services/AudioRecorderService.swift
           cd "$GITHUB_WORKSPACE"
 
           # Apple requires a complete iOS AppIcon catalog + CFBundleIconName.
