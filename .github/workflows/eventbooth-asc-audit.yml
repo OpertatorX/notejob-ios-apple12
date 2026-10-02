@@ -76,12 +76,26 @@ jobs:
             const ps=await req(tok,'/v1/apps/'+APP+'/appPriceSchedule',false);
             console.log('PRICE_SCHEDULE='+(ps?.data?.id||'MISSING'));
             const iaps=rows(await req(tok,'/v1/apps/'+APP+'/inAppPurchasesV2?fields%5BinAppPurchases%5D=name,productId,inAppPurchaseType,state&limit=200',false));
-            for(const x of iaps) console.log('IAP='+x.id+'|'+JSON.stringify(a(x)));
+            for(const x of iaps){
+              console.log('IAP='+x.id+'|'+JSON.stringify(a(x)));
+              const ilocs=rows(await req(tok,'/v1/inAppPurchases/'+x.id+'/inAppPurchaseLocalizations?fields%5BinAppPurchaseLocalizations%5D=locale,name,description&limit=50',false));
+              console.log('IAP_LOCS='+x.id+'|'+JSON.stringify(ilocs.map(y=>a(y))));
+              const ishot=await req(tok,'/v2/inAppPurchases/'+x.id+'/appStoreReviewScreenshot?fields%5BinAppPurchaseAppStoreReviewScreenshots%5D=fileName,assetDeliveryState',false);
+              console.log('IAP_REVIEW_SHOT='+x.id+'|'+(ishot?.data?JSON.stringify(a(ishot.data)):'MISSING'));
+            }
             const groups=rows(await req(tok,'/v1/apps/'+APP+'/subscriptionGroups?fields%5BsubscriptionGroups%5D=referenceName&limit=100',false));
             for(const g of groups){
               console.log('SUB_GROUP='+g.id+'|'+JSON.stringify(a(g)));
-              const ss=rows(await req(tok,'/v1/subscriptionGroups/'+g.id+'/subscriptions?fields%5Bsubscriptions%5D=name,productId,subscriptionPeriod,state&limit=100',false));
-              for(const x of ss) console.log('SUB='+x.id+'|'+JSON.stringify(a(x)));
+              const glocs=rows(await req(tok,'/v1/subscriptionGroups/'+g.id+'/subscriptionGroupLocalizations?fields%5BsubscriptionGroupLocalizations%5D=locale,name,customAppName&limit=50',false));
+              console.log('SUB_GROUP_LOCS='+g.id+'|'+JSON.stringify(glocs.map(y=>a(y))));
+              const ss=rows(await req(tok,'/v1/subscriptionGroups/'+g.id+'/subscriptions?fields%5Bsubscriptions%5D=name,productId,subscriptionPeriod,state,reviewNote&limit=100',false));
+              for(const x of ss){
+                console.log('SUB='+x.id+'|'+JSON.stringify(a(x)));
+                const slocs=rows(await req(tok,'/v1/subscriptions/'+x.id+'/subscriptionLocalizations?fields%5BsubscriptionLocalizations%5D=locale,name,description&limit=50',false));
+                console.log('SUB_LOCS='+x.id+'|'+JSON.stringify(slocs.map(y=>a(y))));
+                const sshot=await req(tok,'/v1/subscriptions/'+x.id+'/appStoreReviewScreenshot?fields%5BsubscriptionAppStoreReviewScreenshots%5D=fileName,assetDeliveryState',false);
+                console.log('SUB_REVIEW_SHOT='+x.id+'|'+(sshot?.data?JSON.stringify(a(sshot.data)):'MISSING'));
+              }
             }
             console.log('EVENTBOOTH_AUDIT=PASS');
           })().catch(e=>{console.error('EVENTBOOTH_AUDIT=FAIL');console.error(e.stack||e.message);process.exit(1)})
