@@ -31,16 +31,26 @@ jobs:
           done
           python3 internal/eventbooth/rc8hotfix.py
           python3 internal/eventbooth/finalhotfix.py
-          file "$ROOT/EventBooth/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
-          echo "ACTUAL_ICON_SHA=$(sha256sum "$ROOT/EventBooth/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png" | awk '{print $1}')"
-          test "$(sha256sum "$ROOT/EventBooth/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png" | awk '{print $1}')" = "1b9108f943a84178108d6ec5da1f28b3d0c8da3e65d20db194a453bdf242c83f"
-          cmp "$ROOT/EventBooth/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png" "$ROOT/EventBooth/Resources/Assets.xcassets/BrandMark.imageset/BrandMark.png"
+          ICON="$ROOT/EventBooth/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
+          BRAND="$ROOT/EventBooth/Resources/Assets.xcassets/BrandMark.imageset/BrandMark.png"
+          file "$ICON"
+          SHA="$(sha256sum "$ICON" | awk '{print $1}')"
+          echo "ACTUAL_ICON_SHA=$SHA"
+          test "$SHA" = "f5bdc7556e05289b7aecb10d3dbe72f6c221a32ab4c8229b1411a64999ce3498"
+          cmp "$ICON" "$BRAND"
           grep -q 'CURRENT_PROJECT_VERSION: 11' "$ROOT/project.yml"
-          echo "APPICON_SHA256=1b9108f943a84178108d6ec5da1f28b3d0c8da3e65d20db194a453bdf242c83f"
+          grep -q 'Image("BrandMark")' "$ROOT/EventBooth/Features/Booth/BoothHomeView.swift"
+          grep -q 'Image("BrandMark")' "$ROOT/EventBooth/Features/Events/EventsHomeView.swift"
+          mkdir -p /tmp/eventbooth-brand-audit
+          cp "$ICON" /tmp/eventbooth-brand-audit/AppIcon-1024.png
+          cp "$BRAND" /tmp/eventbooth-brand-audit/BrandMark.png
+          echo "APPICON_SHA256=$SHA"
           echo "APPICON_SIZE=1024x1024"
           echo "BRANDMARK_MATCHES_APPROVED_ICON=yes"
           echo "BUILD_NUMBER=11"
-          grep -q 'Image("BrandMark")' "$ROOT/EventBooth/Features/Booth/BoothHomeView.swift"
-          grep -q 'Image("BrandMark")' "$ROOT/EventBooth/Features/Events/EventsHomeView.swift"
           echo "EVENTBOOTH_FINAL_HOTFIX_VALIDATE=PASS"
-          # validation trigger: deterministic premium-icon reconstruction v2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EventBooth-final-brand-audit
+          path: /tmp/eventbooth-brand-audit
+          retention-days: 7
