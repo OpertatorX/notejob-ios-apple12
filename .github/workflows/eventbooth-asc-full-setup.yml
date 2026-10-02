@@ -25,3 +25,4 @@ jobs:
           mkdir -p /tmp/easlib
           npm install --prefix /tmp/easlib eas-cli@latest --ignore-scripts --no-audit --no-fund >/dev/null
       - run: node internal/eventbooth/asc_full_setup.cjs
+# rerun after successful binary upload c7044e0c-99c9-455f-a5be-8aa4a3399c40
