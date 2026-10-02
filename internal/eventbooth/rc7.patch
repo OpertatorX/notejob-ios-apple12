@@ -1,0 +1,98 @@
+diff -ruN '--exclude=ScreenshotWedding.jpg' rc6_work/EventBooth/DesignSystem/DesignSystem.swift rc7_work/EventBooth/DesignSystem/DesignSystem.swift
+--- rc6_work/EventBooth/DesignSystem/DesignSystem.swift	2026-10-02 12:02:20.000000000 +0000
++++ rc7_work/EventBooth/DesignSystem/DesignSystem.swift	2026-10-02 14:05:13.520896659 +0000
+@@ -91,9 +91,9 @@
+           )
+         )
+ 
+-        var transform = CGAffineTransform(translationX: -c.x, y: -c.y)
++        var transform = CGAffineTransform(translationX: c.x, y: c.y)
+         transform = transform.rotated(by: Angle.degrees(deg).radians)
+-        transform = transform.translatedBy(x: c.x, y: c.y)
++        transform = transform.translatedBy(x: -c.x, y: -c.y)
+         leaf = leaf.applying(transform)
+ 
+         context.stroke(
+diff -ruN '--exclude=ScreenshotWedding.jpg' rc6_work/EventBooth/Features/Booth/BoothHomeView.swift rc7_work/EventBooth/Features/Booth/BoothHomeView.swift
+--- rc6_work/EventBooth/Features/Booth/BoothHomeView.swift	2026-10-02 13:32:03.892288064 +0000
++++ rc7_work/EventBooth/Features/Booth/BoothHomeView.swift	2026-10-02 14:05:13.521325720 +0000
+@@ -1,4 +1,5 @@
+ import SwiftUI
++import UIKit
+ 
+ struct BoothHomeView: View {
+   @Environment(\.locale) private var locale
+@@ -53,6 +54,7 @@
+     .sheet(isPresented: $showingPaywall) {
+       PaywallView(eventID: event.id)
+     }
++    .onAppear { requestBoothLandscapeIfNeeded() }
+     .alert("admin.title", isPresented: $showingPIN) {
+       SecureField("admin.pin", text: $pin).keyboardType(.numberPad)
+       Button("common.cancel", role: .cancel) { pin = "" }
+@@ -121,7 +123,7 @@
+           .shadow(color: .black.opacity(0.12), radius: 8, y: 2)
+       }
+ 
+-      Text(event.date.formatted(.dateTime.day().month(.twoDigits).year(.twoDigits)))
++      Text(elegantDate)
+         .ebSerif(27)
+         .tracking(4.6)
+         .foregroundStyle(.white.opacity(0.96))
+@@ -260,6 +262,21 @@
+     }
+   }
+ 
++  private var elegantDate: String {
++    let formatter = DateFormatter()
++    formatter.calendar = Calendar(identifier: .gregorian)
++    formatter.locale = Locale(identifier: "en_US_POSIX")
++    formatter.dateFormat = "dd · MM · yy"
++    return formatter.string(from: event.date)
++  }
++
++  private func requestBoothLandscapeIfNeeded() {
++    guard UIDevice.current.userInterfaceIdiom == .pad else { return }
++    let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
++    guard let scene = scenes.first else { return }
++    scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscape)) { _ in }
++  }
++
+   private var languageLabel: String {
+     let code = locale.language.languageCode?.identifier.uppercased()
+     return code == "FR" ? "FR" : "EN"
+diff -ruN '--exclude=ScreenshotWedding.jpg' rc6_work/EventBooth/Features/Settings/SettingsView.swift rc7_work/EventBooth/Features/Settings/SettingsView.swift
+--- rc6_work/EventBooth/Features/Settings/SettingsView.swift	2026-10-02 13:01:33.218193174 +0000
++++ rc7_work/EventBooth/Features/Settings/SettingsView.swift	2026-10-02 14:05:13.521493426 +0000
+@@ -178,7 +178,7 @@
+           .frame(maxWidth: .infinity)
+           .padding(.top, 4)
+ 
+-        Text("Event Booth v1.0")
++        Text(appVersionLabel)
+           .font(.system(size: 11, weight: .medium))
+           .foregroundStyle(.secondary)
+           .frame(maxWidth: .infinity)
+@@ -192,6 +192,11 @@
+   }
+ 
+ 
++  private var appVersionLabel: String {
++    let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
++    return "Event Booth v\(version)"
++  }
++
+   private var adminPINBinding: Binding<String> {
+     Binding(
+       get: { store.settings.adminPIN },
+@@ -255,9 +260,9 @@
+ 
+   var body: some View {
+     ScrollView {
+-      if event != nil {
++      if let currentEvent = event {
+         let binding = Binding<BoothEvent>(
+-          get: { event! },
++          get: { event ?? currentEvent },
+           set: { event = $0 }
+         )
