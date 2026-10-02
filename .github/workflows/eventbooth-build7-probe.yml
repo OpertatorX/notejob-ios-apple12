@@ -1,0 +1,50 @@
+name: Event Booth build 7 ASC probe
+on:
+  push:
+    branches: [eventbooth-asc-internal]
+    paths: [".github/workflows/eventbooth-build7-probe.yml"]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      OX_EAS_PROJECT_ID: "a8ec463b-a530-41c9-af1f-c5499359f881"
+      OX_PROJECT_SLUG: "ox-invoice"
+      OX_BUNDLE_ID: "com.operatorx.oxinvoice"
+      APP_ID: "6818422621"
+    steps:
+      - uses: actions/setup-node@v4
+        with: { node-version: "24" }
+      - run: |
+          set -euo pipefail
+          mkdir -p /tmp/easlib
+          npm install --prefix /tmp/easlib eas-cli@latest --ignore-scripts --no-audit --no-fund >/dev/null
+          cat >/tmp/probe.cjs <<'NODE'
+          const crypto=require('crypto');
+          const E='/tmp/easlib/node_modules/eas-cli/build';
+          const {createGraphqlClient}=require(E+'/commandUtils/context/contextUtils/createGraphqlClient.js');
+          const {getOwnerAccountForProjectIdAsync}=require(E+'/project/projectUtils.js');
+          const {getAscApiKeyForAppSubmissionsAsync}=require(E+'/credentials/ios/api/GraphqlClient.js');
+          const {AppStoreConnectApiKeyQuery}=require(E+'/graphql/queries/AppStoreConnectApiKeyQuery.js');
+          const b64=x=>Buffer.from(x).toString('base64url');
+          function jwtFor(k){const n=Math.floor(Date.now()/1000),h={alg:'ES256',kid:k.keyIdentifier,typ:'JWT'},p={iss:k.issuerIdentifier,iat:n-5,exp:n+900,aud:'appstoreconnect-v1'};const s=b64(JSON.stringify(h))+'.'+b64(JSON.stringify(p));return s+'.'+crypto.sign('sha256',Buffer.from(s),{key:k.keyP8,dsaEncoding:'ieee-p1363'}).toString('base64url')}
+          (async()=>{
+            const gql=createGraphqlClient({accessToken:process.env.EXPO_TOKEN,sessionSecret:null});
+            const account=await getOwnerAccountForProjectIdAsync(gql,process.env.OX_EAS_PROJECT_ID);
+            const f=await getAscApiKeyForAppSubmissionsAsync(gql,{account,projectName:process.env.OX_PROJECT_SLUG,bundleIdentifier:process.env.OX_BUNDLE_ID});
+            const k=await AppStoreConnectApiKeyQuery.getByIdAsync(gql,f.id);
+            const tok=jwtFor(k);
+            const url='https://api.appstoreconnect.apple.com/v1/builds?filter%5Bapp%5D='+process.env.APP_ID+'&filter%5Bversion%5D=7&fields%5Bbuilds%5D=version,processingState,expired,uploadedDate,buildAudienceType&limit=20';
+            const r=await fetch(url,{headers:{Authorization:'Bearer '+tok}});
+            const j=await r.json();
+            console.log('HTTP='+r.status);
+            const rows=j.data||[];
+            console.log('BUILD7_COUNT='+rows.length);
+            for(const b of rows) console.log('BUILD7='+b.id+'|'+JSON.stringify(b.attributes||{}));
+            if(!r.ok) process.exit(2);
+          })().catch(e=>{console.error(e.stack||e.message);process.exit(1)})
+          NODE
+          node /tmp/probe.cjs
