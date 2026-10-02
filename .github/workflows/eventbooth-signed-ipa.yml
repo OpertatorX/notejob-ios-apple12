@@ -1,4 +1,4 @@
-name: Event Booth RC2 build 3 signed IPA
+name: Event Booth RC3 build 3 signed IPA
 
 on:
   push:
@@ -40,6 +40,15 @@ jobs:
           cat internal/eventbooth/rc2/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/eventbooth-rc2-overlay.tar.gz
           echo "6ce64b55c2cbaaffcf43b6bf939d4368158ebf28ede0697f01c46e3913161868  /tmp/eventbooth-rc2-overlay.tar.gz" | shasum -a 256 -c -
           tar -xzf /tmp/eventbooth-rc2-overlay.tar.gz -C /tmp/eventbooth-src
+
+          # Apply RC3 audit patch: visual parity, screenshot fixtures, compile fixes,
+          # free test captures, settings polish and PDF preview.
+          base64 --decode internal/eventbooth/rc3.patch.gz.b64 > /tmp/eventbooth-rc3.patch.gz
+          echo "49a2f3ecc3b2e21c0b1e97bad5a90c68b9b96ca75bcad7ccb9edfd53644364f0  /tmp/eventbooth-rc3.patch.gz" | shasum -a 256 -c -
+          gunzip -c /tmp/eventbooth-rc3.patch.gz > /tmp/eventbooth-rc3.patch
+          cd /tmp/eventbooth-src
+          patch -p3 < /tmp/eventbooth-rc3.patch
+          cd "$GITHUB_WORKSPACE"
 
           # Apple requires a complete iOS AppIcon catalog + CFBundleIconName.
           ICONDIR=/tmp/eventbooth-src/EventBooth/Resources/Assets.xcassets/AppIcon.appiconset
@@ -87,9 +96,9 @@ jobs:
           /usr/libexec/PlistBuddy -c "Delete :CFBundleIconName" /tmp/eventbooth-src/EventBooth/Info.plist 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string AppIcon" /tmp/eventbooth-src/EventBooth/Info.plist
 
-          echo "=== audited RC2 project.yml ==="
+          echo "=== audited RC3 project.yml ==="
           cat /tmp/eventbooth-src/project.yml
-          echo "=== audited RC2 Info.plist ==="
+          echo "=== audited RC3 Info.plist ==="
           plutil -p /tmp/eventbooth-src/EventBooth/Info.plist
           echo "=== localization counts ==="
           grep -c ' = ' /tmp/eventbooth-src/EventBooth/Resources/fr.lproj/Localizable.strings
