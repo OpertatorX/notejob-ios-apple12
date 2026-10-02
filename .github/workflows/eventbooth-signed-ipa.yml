@@ -82,7 +82,7 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string AppIcon" /tmp/eventbooth-src/EventBooth/Info.plist
 
           # XcodeGen: include Resources in the target so Assets.xcassets is compiled.
-          python3 -c 'from pathlib import Path; p=Path("/tmp/eventbooth-src/project.yml"); s=p.read_text(); old="    sources:\\n      - path: EventBooth\\n        excludes:\\n          - Resources\\n    resources:\\n      - path: EventBooth/Resources\\n"; new="    sources:\\n      - path: EventBooth\\n"; assert old in s, "project.yml resources block not found"; p.write_text(s.replace(old,new))'
+          sed -i.bak '/        excludes:/,+1d; /    resources:/,+1d' /tmp/eventbooth-src/project.yml
           echo "=== patched project.yml ==="
           cat /tmp/eventbooth-src/project.yml
 
