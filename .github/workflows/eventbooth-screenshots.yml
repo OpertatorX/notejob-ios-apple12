@@ -142,8 +142,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m pip install --disable-pip-version-check Pillow >/dev/null
-          python3 - <<'PY'
+          python3 -m venv /tmp/eb-venv
+          /tmp/eb-venv/bin/python -m pip install --disable-pip-version-check Pillow >/dev/null
+          /tmp/eb-venv/bin/python - <<'PY'
           from PIL import Image,ImageOps,ImageDraw,ImageFont
           import os
           os.makedirs('/tmp/store-shots/fr-FR',exist_ok=True)
