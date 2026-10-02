@@ -1,4 +1,4 @@
-name: Event Booth RC5 capture
+name: Event Booth RC6 capture
 
 on:
   push:
@@ -9,6 +9,7 @@ on:
       - "internal/eventbooth/capture_rc4.sh"
       - "internal/eventbooth/rc4hotfix.py"
       - "internal/eventbooth/rc5.patch"
+      - "internal/eventbooth/rc6.patch"
   workflow_dispatch:
 
 permissions:
@@ -20,13 +21,13 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
-      - name: Capture audited RC5
+      - name: Capture audited RC6
         shell: bash
         run: bash internal/eventbooth/capture_rc4.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: EventBooth-RC5-reference-captures
+          name: EventBooth-RC6-reference-captures
           path: |
             /tmp/ebshots/*.png
             /tmp/ebshots/build.log
