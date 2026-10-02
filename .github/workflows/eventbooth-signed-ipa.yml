@@ -1,4 +1,4 @@
-name: Event Booth RC2 build 3 signed IPA
+name: Event Booth V4 audited build 4 IPA
 
 on:
   push:
@@ -40,6 +40,12 @@ jobs:
           cat internal/eventbooth/rc2/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/eventbooth-rc2-overlay.tar.gz
           echo "6ce64b55c2cbaaffcf43b6bf939d4368158ebf28ede0697f01c46e3913161868  /tmp/eventbooth-rc2-overlay.tar.gz" | shasum -a 256 -c -
           tar -xzf /tmp/eventbooth-rc2-overlay.tar.gz -C /tmp/eventbooth-src
+
+          # Apply V4 zero-trust audit overlay: visual reference alignment,
+          # localization, privacy manifest, project resources, settings and screenshot routing.
+          cat internal/eventbooth/v4/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/eventbooth-v4-overlay.tar.gz
+          echo "0b70e030720e79c5070cbdb554c9be3aa7e6dc027cc50025c203b665db13edf0  /tmp/eventbooth-v4-overlay.tar.gz" | shasum -a 256 -c -
+          tar -xzf /tmp/eventbooth-v4-overlay.tar.gz -C /tmp/eventbooth-src
 
           # Apple requires a complete iOS AppIcon catalog + CFBundleIconName.
           ICONDIR=/tmp/eventbooth-src/EventBooth/Resources/Assets.xcassets/AppIcon.appiconset
@@ -283,7 +289,7 @@ jobs:
           APP="$(find /tmp/eventbooth-ipa-check/Payload -maxdepth 1 -name '*.app' -type d -print -quit)"
           test -n "$APP"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist" | grep -qx "com.operatorx.eventbooth"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Info.plist" | grep -qx "3"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Info.plist" | grep -qx "4"
           /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Info.plist" | grep -qx "1.0.0"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIconName" "$APP/Info.plist" | grep -qx "AppIcon"
           /usr/libexec/PlistBuddy -c "Print :ITSAppUsesNonExemptEncryption" "$APP/Info.plist" | grep -qx "false"
@@ -309,7 +315,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: EventBooth-IPA-build3
+          name: EventBooth-IPA-build4
           path: |
             /tmp/eventbooth-src/artifacts/export/*.ipa
             /tmp/eventbooth-src/artifacts/IPA_SHA256.txt
