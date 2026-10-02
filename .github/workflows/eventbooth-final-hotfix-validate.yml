@@ -32,23 +32,13 @@ jobs:
           python3 internal/eventbooth/rc8hotfix.py
           python3 internal/eventbooth/finalhotfix.py
           file "$ROOT/EventBooth/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
-          python3 - <<'PY'
-          from PIL import Image
-          from pathlib import Path
-          import hashlib
-          p=Path('/tmp/eventbooth-src/EventBooth/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png')
-          im=Image.open(p)
-          assert im.size==(1024,1024), im.size
-          assert im.mode in ('RGB','RGBA'), im.mode
-          print('APPICON_SIZE=1024x1024')
-          print('APPICON_SHA256='+hashlib.sha256(p.read_bytes()).hexdigest())
-          q=Path('/tmp/eventbooth-src/EventBooth/Resources/Assets.xcassets/BrandMark.imageset/BrandMark.png')
-          assert q.read_bytes()==p.read_bytes()
-          print('BRANDMARK_MATCHES_APPROVED_ICON=yes')
-          project=Path('/tmp/eventbooth-src/project.yml').read_text()
-          assert 'CURRENT_PROJECT_VERSION: 11' in project
-          print('BUILD_NUMBER=11')
-          PY
+          test "$(sha256sum "$ROOT/EventBooth/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png" | awk '{print $1}')" = "1b9108f943a84178108d6ec5da1f28b3d0c8da3e65d20db194a453bdf242c83f"
+          cmp "$ROOT/EventBooth/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png" "$ROOT/EventBooth/Resources/Assets.xcassets/BrandMark.imageset/BrandMark.png"
+          grep -q 'CURRENT_PROJECT_VERSION: 11' "$ROOT/project.yml"
+          echo "APPICON_SHA256=1b9108f943a84178108d6ec5da1f28b3d0c8da3e65d20db194a453bdf242c83f"
+          echo "APPICON_SIZE=1024x1024"
+          echo "BRANDMARK_MATCHES_APPROVED_ICON=yes"
+          echo "BUILD_NUMBER=11"
           grep -q 'Image("BrandMark")' "$ROOT/EventBooth/Features/Booth/BoothHomeView.swift"
           grep -q 'Image("BrandMark")' "$ROOT/EventBooth/Features/Events/EventsHomeView.swift"
           echo "EVENTBOOTH_FINAL_HOTFIX_VALIDATE=PASS"
