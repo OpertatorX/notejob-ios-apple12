@@ -1,4 +1,4 @@
-name: Event Booth signed IPA fixed
+name: Event Booth RC2 build 3 signed IPA
 
 on:
   push:
@@ -34,6 +34,12 @@ jobs:
           echo "8a8d2094865775cdd5f1f6b302d527fbd2fda02008bed437706451fb83ee9cd2  /tmp/eventbooth-src.tar.gz" | shasum -a 256 -c -
           tar -xzf /tmp/eventbooth-src.tar.gz -C /tmp/eventbooth-src
           cp internal/eventbooth/overrides/CameraController.swift /tmp/eventbooth-src/EventBooth/Services/CameraController.swift
+
+          # Apply the audited RC2 source overlay. It contains the corrected SwiftUI,
+          # localizations, privacy manifest, Info.plist and XcodeGen project.yml.
+          cat internal/eventbooth/rc2/part*.b64 | tr -d '\n\r' | base64 --decode > /tmp/eventbooth-rc2-overlay.tar.gz
+          echo "6ce64b55c2cbaaffcf43b6bf939d4368158ebf28ede0697f01c46e3913161868  /tmp/eventbooth-rc2-overlay.tar.gz" | shasum -a 256 -c -
+          tar -xzf /tmp/eventbooth-rc2-overlay.tar.gz -C /tmp/eventbooth-src
 
           # Apple requires a complete iOS AppIcon catalog + CFBundleIconName.
           ICONDIR=/tmp/eventbooth-src/EventBooth/Resources/Assets.xcassets/AppIcon.appiconset
@@ -81,10 +87,13 @@ jobs:
           /usr/libexec/PlistBuddy -c "Delete :CFBundleIconName" /tmp/eventbooth-src/EventBooth/Info.plist 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string AppIcon" /tmp/eventbooth-src/EventBooth/Info.plist
 
-          # XcodeGen: include Resources in the target so Assets.xcassets is compiled.
-          sed -i.bak '/        excludes:/,+1d; /    resources:/,+1d' /tmp/eventbooth-src/project.yml
-          echo "=== patched project.yml ==="
+          echo "=== audited RC2 project.yml ==="
           cat /tmp/eventbooth-src/project.yml
+          echo "=== audited RC2 Info.plist ==="
+          plutil -p /tmp/eventbooth-src/EventBooth/Info.plist
+          echo "=== localization counts ==="
+          grep -c ' = ' /tmp/eventbooth-src/EventBooth/Resources/fr.lproj/Localizable.strings
+          grep -c ' = ' /tmp/eventbooth-src/EventBooth/Resources/en.lproj/Localizable.strings
 
       - name: Install tooling
         run: |
@@ -212,6 +221,19 @@ jobs:
         working-directory: /tmp/eventbooth-src
         run: xcodegen generate
 
+      - name: Release simulator compile gate
+        working-directory: /tmp/eventbooth-src
+        shell: bash
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project EventBooth.xcodeproj \
+            -scheme EventBooth \
+            -configuration Release \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build | tee /tmp/eventbooth-simulator-release.log
+
       - name: Archive with App Store profile
         working-directory: /tmp/eventbooth-src
         shell: bash
@@ -260,20 +282,40 @@ jobs:
           unzip -q "$IPA" -d /tmp/eventbooth-ipa-check
           APP="$(find /tmp/eventbooth-ipa-check/Payload -maxdepth 1 -name '*.app' -type d -print -quit)"
           test -n "$APP"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist" | grep -qx "com.operatorx.eventbooth"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Info.plist" | grep -qx "3"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Info.plist" | grep -qx "1.0.0"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIconName" "$APP/Info.plist" | grep -qx "AppIcon"
+          /usr/libexec/PlistBuddy -c "Print :ITSAppUsesNonExemptEncryption" "$APP/Info.plist" | grep -qx "false"
           test -s "$APP/Assets.car"
-          find "$APP" -maxdepth 1 -type f -name 'AppIcon*.png' -print
-          echo "APPICON_BUNDLE_VALID=yes"
+          test -s "$APP/PrivacyInfo.xcprivacy"
+          test -s "$APP/fr.lproj/Localizable.strings"
+          test -s "$APP/en.lproj/Localizable.strings"
+          test -s "$APP/fr.lproj/InfoPlist.strings"
+          test -s "$APP/en.lproj/InfoPlist.strings"
+          plutil -lint "$APP/Info.plist" "$APP/PrivacyInfo.xcprivacy"
+          plutil -p "$APP/PrivacyInfo.xcprivacy"
+          grep -q "NSPrivacyAccessedAPICategoryDiskSpace" "$APP/PrivacyInfo.xcprivacy"
+          grep -q "E174.1" "$APP/PrivacyInfo.xcprivacy"
+          grep -q "NSPrivacyAccessedAPICategoryFileTimestamp" "$APP/PrivacyInfo.xcprivacy"
+          grep -q "C617.1" "$APP/PrivacyInfo.xcprivacy"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -d --entitlements :- "$APP" > artifacts/EventBooth-entitlements.plist 2>/dev/null || true
+          find "$APP" -maxdepth 2 -type f | sort | tee artifacts/APP_BUNDLE_FILES.txt
+          echo "BINARY_RESOURCE_AUDIT=PASS"
           shasum -a 256 "$IPA" | tee artifacts/IPA_SHA256.txt
           echo "IPA_READY=yes"
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: EventBooth-IPA-build2-fixed
+          name: EventBooth-IPA-build3
           path: |
             /tmp/eventbooth-src/artifacts/export/*.ipa
             /tmp/eventbooth-src/artifacts/IPA_SHA256.txt
+            /tmp/eventbooth-src/artifacts/EventBooth-entitlements.plist
+            /tmp/eventbooth-src/artifacts/APP_BUNDLE_FILES.txt
+            /tmp/eventbooth-simulator-release.log
             /tmp/eventbooth-archive.log
             /tmp/eventbooth-export.log
           if-no-files-found: warn
