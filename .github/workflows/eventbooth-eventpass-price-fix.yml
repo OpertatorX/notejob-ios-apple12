@@ -1,0 +1,89 @@
+name: Event Booth Event Pass price fix
+on:
+  push:
+    branches: [eventbooth-asc-internal]
+    paths: [".github/workflows/eventbooth-eventpass-price-fix.yml"]
+permissions: { contents: read }
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      OX_EAS_PROJECT_ID: "a8ec463b-a530-41c9-af1f-c5499359f881"
+      OX_PROJECT_SLUG: "ox-invoice"
+      OX_BUNDLE_ID: "com.operatorx.oxinvoice"
+      IAP_ID: "6818428224"
+    steps:
+      - uses: actions/setup-node@v4
+        with: { node-version: "24" }
+      - run: |
+          set -euo pipefail
+          mkdir -p /tmp/easlib
+          npm install --prefix /tmp/easlib eas-cli@latest --ignore-scripts --no-audit --no-fund >/dev/null
+      - name: Set Event Pass price
+        run: |
+          set -euo pipefail
+          cat >/tmp/price.cjs <<'NODE'
+          const crypto=require('crypto');
+          const E='/tmp/easlib/node_modules/eas-cli/build';
+          const {createGraphqlClient}=require(E+'/commandUtils/context/contextUtils/createGraphqlClient.js');
+          const {getOwnerAccountForProjectIdAsync}=require(E+'/project/projectUtils.js');
+          const {getAscApiKeyForAppSubmissionsAsync}=require(E+'/credentials/ios/api/GraphqlClient.js');
+          const {AppStoreConnectApiKeyQuery}=require(E+'/graphql/queries/AppStoreConnectApiKeyQuery.js');
+          const b64url=x=>Buffer.from(x).toString('base64url');
+          function jwtFor(k){const n=Math.floor(Date.now()/1000),h={alg:'ES256',kid:k.keyIdentifier,typ:'JWT'},p={iss:k.issuerIdentifier,iat:n-5,exp:n+900,aud:'appstoreconnect-v1'};const s=b64url(JSON.stringify(h))+'.'+b64url(JSON.stringify(p));return s+'.'+crypto.sign('sha256',Buffer.from(s),{key:k.keyP8,dsaEncoding:'ieee-p1363'}).toString('base64url')}
+          async function req(tok,m,u,b=null,ok=[200]){
+            const r=await fetch('https://api.appstoreconnect.apple.com'+u,{method:m,headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});
+            const t=await r.text();let j={};try{j=t?JSON.parse(t):{}}catch{}
+            if(!ok.includes(r.status)){console.log('HTTP_FAIL='+r.status+'|'+m+'|'+u);console.log('ERROR='+JSON.stringify(j));return{status:r.status,data:j}}
+            return{status:r.status,data:j}
+          }
+          async function all(tok,u){let n='https://api.appstoreconnect.apple.com'+u,o=[];while(n){const r=await fetch(n,{headers:{Authorization:'Bearer '+tok}});const t=await r.text();let j={};try{j=t?JSON.parse(t):{}}catch{};if(!r.ok)throw new Error('GET '+n+' '+r.status+' '+t.slice(0,2000));o.push(...(j.data||[]));n=j.links?.next||null}return o}
+          (async()=>{
+            const gql=createGraphqlClient({accessToken:process.env.EXPO_TOKEN,sessionSecret:null});
+            const account=await getOwnerAccountForProjectIdAsync(gql,process.env.OX_EAS_PROJECT_ID);
+            const frag=await getAscApiKeyForAppSubmissionsAsync(gql,{account,projectName:process.env.OX_PROJECT_SLUG,bundleIdentifier:process.env.OX_BUNDLE_ID});
+            const key=await AppStoreConnectApiKeyQuery.getByIdAsync(gql,frag.id),tok=jwtFor(key);
+            const id=process.env.IAP_ID;
+            const pps=await all(tok,'/v2/inAppPurchases/'+id+'/pricePoints?filter%5Bterritory%5D=FRA&fields%5BinAppPurchasePricePoints%5D=customerPrice,territory&limit=8000');
+            console.log('FRA_PRICEPOINT_COUNT='+pps.length);
+            const pp=pps.find(x=>String(x.attributes?.customerPrice)==='7.99');
+            if(!pp) throw new Error('FRA price point 7.99 not found');
+            console.log('FRA_799_PRICEPOINT='+pp.id);
+
+            const schedule=await req(tok,'GET','/v2/inAppPurchases/'+id+'/iapPriceSchedule?include=baseTerritory,manualPrices&fields%5BinAppPurchasePriceSchedules%5D=baseTerritory,manualPrices&fields%5Bterritories%5D=currency&fields%5BinAppPurchasePrices%5D=startDate,endDate,territory,inAppPurchasePricePoint');
+            const existing=(schedule.data?.included||[]).filter(x=>x.type==='inAppPurchasePrices');
+            console.log('EXISTING_MANUAL_PRICES='+existing.length);
+            if(!existing.length){
+              const lid='$'+'{price-1}';
+              const body={data:{
+                type:'inAppPurchasePriceSchedules',
+                relationships:{
+                  inAppPurchase:{data:{type:'inAppPurchases',id}},
+                  baseTerritory:{data:{type:'territories',id:'FRA'}},
+                  manualPrices:{data:[{type:'inAppPurchasePrices',id:lid}]}
+                }
+              },included:[{
+                type:'inAppPurchasePrices',
+                id:lid,
+                attributes:{startDate:null},
+                relationships:{
+                  inAppPurchaseV2:{data:{type:'inAppPurchases',id}},
+                  inAppPurchasePricePoint:{data:{type:'inAppPurchasePricePoints',id:pp.id}}
+                }
+              }]};
+              const made=await req(tok,'POST','/v1/inAppPurchasePriceSchedules',body,[201]);
+              if(made.status!==201) process.exit(12);
+              console.log('PRICE_CREATED=yes');
+            }else{
+              console.log('PRICE_CREATED=no');
+            }
+
+            const verify=await req(tok,'GET','/v2/inAppPurchases/'+id+'/iapPriceSchedule?include=baseTerritory,manualPrices&fields%5BinAppPurchasePriceSchedules%5D=baseTerritory,manualPrices&fields%5Bterritories%5D=currency&fields%5BinAppPurchasePrices%5D=startDate,endDate,territory,inAppPurchasePricePoint');
+            console.log('VERIFY_SCHEDULE='+JSON.stringify(verify.data));
+            const iap=await req(tok,'GET','/v2/inAppPurchases/'+id+'?fields%5BinAppPurchases%5D=name,productId,state,reviewNote');
+            console.log('IAP_STATE='+iap.data?.data?.attributes?.state);
+          })().catch(e=>{console.error(e.stack||e.message);process.exit(1)})
+          NODE
+          node /tmp/price.cjs
