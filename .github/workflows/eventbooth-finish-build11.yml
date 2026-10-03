@@ -1,0 +1,246 @@
+name: Event Booth finish build 11
+
+on:
+  push:
+    branches: [eventbooth-asc-internal]
+    paths: [".github/workflows/eventbooth-finish-build11.yml"]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  finish:
+    runs-on: macos-26
+    timeout-minutes: 120
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      OX_EAS_PROJECT_ID: "a8ec463b-a530-41c9-af1f-c5499359f881"
+      OX_PROJECT_SLUG: "ox-invoice"
+      OX_BUNDLE_ID: "com.operatorx.oxinvoice"
+      EVENTBOOTH_BUNDLE_ID: "com.operatorx.eventbooth"
+      EVENTBOOTH_STORE_SHOTS: "/tmp/eb-store-shots"
+      EVENTBOOTH_CAPTURES: "/tmp/eb-captures"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install final orchestration tooling
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/eb-final-venv
+          /tmp/eb-final-venv/bin/python -m pip install --disable-pip-version-check PyYAML Pillow >/dev/null
+
+      - name: Build and sign final build 11
+        shell: bash
+        run: |
+          set -euo pipefail
+          /tmp/eb-final-venv/bin/python internal/eventbooth/run_signed_workflow_build11.py
+          IPA="$(find /tmp/eventbooth-src/artifacts/export -name '*.ipa' -print -quit)"
+          test -s "$IPA"
+          echo "EVENTBOOTH_IPA=$IPA" >> "$GITHUB_ENV"
+          echo "FINAL_IPA_SHA256=$(shasum -a 256 "$IPA" | awk '{print $1}')"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: EventBooth-final-build11-IPA
+          path: |
+            /tmp/eventbooth-src/artifacts/export/*.ipa
+            /tmp/eventbooth-src/artifacts/IPA_SHA256.txt
+            /tmp/eventbooth-src/artifacts/EventBooth-entitlements.plist
+            /tmp/eventbooth-src/artifacts/APP_BUNDLE_FILES.txt
+            /tmp/eventbooth-simulator-release.log
+            /tmp/eventbooth-archive.log
+            /tmp/eventbooth-export.log
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload final build 11 to App Store Connect
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/eventbooth-submit11
+          mkdir -p /tmp/eventbooth-submit11
+          cd /tmp/eventbooth-submit11
+          cat > app.json <<'JSON'
+          {
+            "expo": {
+              "name": "Event Booth",
+              "slug": "eventbooth",
+              "owner": "operatorx",
+              "version": "1.0.0",
+              "ios": {
+                "bundleIdentifier": "com.operatorx.eventbooth",
+                "buildNumber": "11",
+                "supportsTablet": true
+              },
+              "extra": {
+                "eas": { "projectId": "9753c8e1-2a24-412c-af5a-adb6c10ec789" }
+              }
+            }
+          }
+          JSON
+          cat > package.json <<'JSON'
+          {"name":"eventbooth-submit-build11","version":"1.0.0","private":true}
+          JSON
+          cat > eas.json <<'JSON'
+          {
+            "cli": { "version": ">= 22.0.0", "appVersionSource": "local" },
+            "submit": {
+              "production": {
+                "ios": {
+                  "ascAppId": "6818422621",
+                  "appleTeamId": "67ZL6VYTQ8"
+                }
+              }
+            }
+          }
+          JSON
+          set -o pipefail
+          /tmp/easlib/node_modules/.bin/eas submit \
+            --platform ios \
+            --profile production \
+            --path "$EVENTBOOTH_IPA" \
+            --non-interactive \
+            --wait 2>&1 | tee /tmp/eventbooth-build11-submit.log
+          grep -Eiq 'submitted|submission|uploaded|App Store Connect|processing' /tmp/eventbooth-build11-submit.log
+          echo "EVENTBOOTH_BUILD11_UPLOAD=PASS"
+
+      - name: Verify public Apple support pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          for URL in \
+            https://operatorx-eventbooth.vercel.app \
+            https://operatorx-eventbooth.vercel.app/privacy.html \
+            https://operatorx-eventbooth.vercel.app/support.html
+          do
+            curl -L --fail --retry 3 --max-time 30 -sS "$URL" -o /tmp/site.html
+            test -s /tmp/site.html
+            echo "SITE_OK=$URL"
+          done
+
+      - name: Complete App Store products and base metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          node internal/eventbooth/asc_full_setup.cjs | tee /tmp/eventbooth-asc-setup.log
+          grep -q 'EVENTBOOTH_ASC_SETUP=PASS' /tmp/eventbooth-asc-setup.log
+
+      - name: Build final screenshot simulator app
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/eventbooth-src
+          xcodegen generate
+          rm -rf /tmp/eb-shots-dd /tmp/eb-captures
+          mkdir -p /tmp/eb-captures
+          set -o pipefail
+          xcodebuild -project EventBooth.xcodeproj -scheme EventBooth -configuration Release \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/eb-shots-dd \
+            CODE_SIGNING_ALLOWED=NO build | tee /tmp/eventbooth-screenshot-build.log
+          if grep -E '/tmp/eventbooth-src/EventBooth/.*: warning:' /tmp/eventbooth-screenshot-build.log; then
+            echo "SCREENSHOT_SOURCE_WARNING_GATE=FAIL"; exit 31
+          fi
+          APP="$(find /tmp/eb-shots-dd/Build/Products -path '*Release-iphonesimulator/EventBooth.app' -type d -print -quit)"
+          test -d "$APP"
+          echo "SIM_APP=$APP" >> "$GITHUB_ENV"
+          echo "SCREENSHOT_BUILD=PASS"
+
+      - name: Capture final real app screens in FR and EN
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun simctl shutdown all >/dev/null 2>&1 || true
+          xcrun simctl list devices available -j > /tmp/devices.json
+          python3 - <<'PY' >/tmp/udids.env
+          import json
+          j=json.load(open('/tmp/devices.json'))
+          ds=[d for arr in j['devices'].values() for d in arr if d.get('isAvailable')]
+          phones=[d for d in ds if d['name'].startswith('iPhone')]
+          pads=[d for d in ds if d['name'].startswith('iPad')]
+          if not phones or not pads: raise SystemExit('SIMULATOR_DEVICE_MISSING')
+          def pick(xs,names):
+              for n in names:
+                  for d in xs:
+                      if d['name']==n:return d['udid']
+              return xs[0]['udid']
+          print('IPHONE='+pick(phones,['iPhone 16 Pro Max','iPhone 16 Pro','iPhone 16 Plus']))
+          print('IPAD='+pick(pads,['iPad Pro 13-inch (M4)','iPad Air 13-inch (M3)','iPad Pro 11-inch (M4)']))
+          PY
+          source /tmp/udids.env
+          capture_device () {
+            UDID="$1"; PREFIX="$2"; ROUTES="$3"
+            xcrun simctl boot "$UDID" || true
+            sleep 16
+            xcrun simctl install "$UDID" "$SIM_APP"
+            for LANGSPEC in "fr:fr_FR" "en:en_US"; do
+              LANG="${LANGSPEC%%:*}"; LOCALE="${LANGSPEC#*:}"
+              for ROUTE in $ROUTES; do
+                OUT="/tmp/eb-captures/${PREFIX}-${ROUTE}-${LANG}.png"
+                xcrun simctl terminate "$UDID" com.operatorx.eventbooth >/dev/null 2>&1 || true
+                SIMCTL_CHILD_EVENTBOOTH_SCREEN="$ROUTE" xcrun simctl launch "$UDID" com.operatorx.eventbooth \
+                  -AppleLanguages "($LANG)" -AppleLocale "$LOCALE" >/dev/null
+                sleep 2.5
+                xcrun simctl io "$UDID" screenshot "$OUT"
+                test -s "$OUT"
+              done
+            done
+            xcrun simctl shutdown "$UDID" || true
+          }
+          capture_device "$IPHONE" iphone "events dashboard library booth settings"
+          capture_device "$IPAD" ipad "booth dashboard guestbook export eventSettings"
+          test "$(find /tmp/eb-captures -name '*.png' | wc -l | tr -d ' ')" -eq 20
+          echo "EVENTBOOTH_CAPTURE_MATRIX=PASS"
+
+      - name: Render presentation screenshots from the approved maquette direction
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/eb-store-shots
+          /tmp/eb-final-venv/bin/python internal/eventbooth/render_appstore_final.py
+          test "$(find /tmp/eb-store-shots -name '*.jpg' | wc -l | tr -d ' ')" -eq 20
+
+      - name: Upload final FR and EN screenshots
+        shell: bash
+        run: |
+          set -euo pipefail
+          node internal/eventbooth/asc_upload_final_screenshots.cjs | tee /tmp/eventbooth-screenshots-upload.log
+          grep -q 'EVENTBOOTH_FINAL_SCREENSHOTS=PASS' /tmp/eventbooth-screenshots-upload.log
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: EventBooth-final-AppStore-screenshots
+          path: |
+            /tmp/eb-store-shots/**/*.jpg
+            /tmp/eb-captures/*.png
+            /tmp/eventbooth-screenshot-build.log
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Finalize metadata, prices and select build 11
+        shell: bash
+        run: |
+          set -euo pipefail
+          node internal/eventbooth/asc_finalize_build11.cjs | tee /tmp/eventbooth-finalize.log
+          grep -q 'EVENTBOOTH_ASC_FINALIZE=PASS' /tmp/eventbooth-finalize.log
+
+      - name: Final release summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'EVENT BOOTH FINAL RELEASE'
+          echo 'Build: 11'
+          echo 'Bundle: com.operatorx.eventbooth'
+          echo 'App Store Connect: 6818422621'
+          echo 'Localizations: fr-FR + en-US'
+          echo 'Screenshots: 5 iPhone + 5 iPad per locale'
+          echo 'Event Pass: 7.99 EUR base price'
+          echo 'Pro Annual: 39.99 EUR base price'
+          echo 'EVENTBOOTH_FINAL_RELEASE=PASS'
