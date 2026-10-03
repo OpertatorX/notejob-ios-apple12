@@ -3,6 +3,7 @@
 Status: PASS
 Audit date: 2026-10-03
 Audit workflow run: 37106551526
+App pricing workflow run: 37111547760
 App Store Connect app ID: 6818422621
 Bundle ID: com.operatorx.eventbooth
 Version: 1.0
@@ -21,6 +22,13 @@ Release type: MANUAL
 - Copyright: 2026 OperatorX
 - Review contact/details: PASS
 - Demo account required: false
+
+## App pricing & availability
+
+- App download price: FREE / 0.00, PASS
+- Base pricing territory: USA
+- Available in new territories: true
+- Pricing schedule verified live after creation: PASS
 
 ## Screenshots
 
@@ -44,8 +52,9 @@ Total App Store screenshots: 20.
 - Privacy page: PASS
 - Support page: PASS
 
-## Final gate
+## Final gates
 
 `EVENTBOOTH_FINAL_ASC_AUDIT=PASS`
+`EVENTBOOTH_APP_PRICING=PASS`
 
-No submission to App Review has been performed by this audit. The App Store version remains PREPARE_FOR_SUBMISSION until explicit submission approval is given.
+No submission to App Review has been performed by these audits. The App Store version remains PREPARE_FOR_SUBMISSION until explicit submission approval is given.
