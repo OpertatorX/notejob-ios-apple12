@@ -3,7 +3,9 @@ name: Event Booth final ASC audit v2
 on:
   push:
     branches: [eventbooth-asc-internal]
-    paths: [".github/workflows/eventbooth-final-asc-audit-v2.yml"]
+    paths:
+      - ".github/workflows/eventbooth-final-asc-audit-v2.yml"
+      - "internal/eventbooth/fix_eula_metadata.cjs"
 
 permissions:
   contents: read
@@ -37,6 +39,11 @@ jobs:
           set -euo pipefail
           mkdir -p /tmp/easlib
           npm install --prefix /tmp/easlib eas-cli@latest --ignore-scripts --no-audit --no-fund >/dev/null
+      - name: Fix and verify EULA metadata
+        run: |
+          set -euo pipefail
+          node internal/eventbooth/fix_eula_metadata.cjs | tee /tmp/eventbooth-eula.log
+          grep -q 'EVENTBOOTH_EULA_METADATA_FIX=PASS' /tmp/eventbooth-eula.log
       - name: Audit live App Store Connect state
         run: |
           set -euo pipefail
