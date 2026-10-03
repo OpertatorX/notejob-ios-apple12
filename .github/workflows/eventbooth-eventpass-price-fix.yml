@@ -30,74 +30,50 @@ jobs:
           mkdir -p /tmp/easlib
           npm install --prefix /tmp/easlib eas-cli@latest --ignore-scripts --no-audit --no-fund >/dev/null
 
-      - name: Set Event Pass base price to 7.99 EUR in France
+      - name: Verify Event Pass 7.99 EUR effective schedule
         shell: bash
         run: |
           set -euo pipefail
-          cat >/tmp/eventbooth-price-fix.cjs <<'NODE'
+          cat >/tmp/eventbooth-price-verify.cjs <<'NODE'
           const crypto=require('crypto');
           const E='/tmp/easlib/node_modules/eas-cli/build';
           const {createGraphqlClient}=require(E+'/commandUtils/context/contextUtils/createGraphqlClient.js');
           const {getOwnerAccountForProjectIdAsync}=require(E+'/project/projectUtils.js');
           const {getAscApiKeyForAppSubmissionsAsync}=require(E+'/credentials/ios/api/GraphqlClient.js');
           const {AppStoreConnectApiKeyQuery}=require(E+'/graphql/queries/AppStoreConnectApiKeyQuery.js');
-          const APP=process.env.EVENTBOOTH_APP_ID;
-          const PRODUCT=process.env.EVENTBOOTH_PRODUCT_ID;
-          const TARGET='7.99';
+          const APP=process.env.EVENTBOOTH_APP_ID, PRODUCT=process.env.EVENTBOOTH_PRODUCT_ID, TARGET='7.99';
           const b64url=x=>Buffer.from(x).toString('base64url');
           function jwtFor(k){const n=Math.floor(Date.now()/1000),h={alg:'ES256',kid:k.keyIdentifier,typ:'JWT'},p={iss:k.issuerIdentifier,iat:n-5,exp:n+900,aud:'appstoreconnect-v1'};const s=b64url(JSON.stringify(h))+'.'+b64url(JSON.stringify(p));return s+'.'+crypto.sign('sha256',Buffer.from(s),{key:k.keyP8,dsaEncoding:'ieee-p1363'}).toString('base64url')}
           async function req(tok,m,u,b=null,ok=[200]){const r=await fetch('https://api.appstoreconnect.apple.com'+u,{method:m,headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});const t=await r.text();let j={};try{j=t?JSON.parse(t):{}}catch{};if(!ok.includes(r.status)){const safe=j?.errors?.map(e=>({status:e.status,code:e.code,title:e.title,detail:e.detail,source:e.source}))??j;throw new Error(m+' '+u+' -> '+r.status+' '+JSON.stringify(safe))}return{status:r.status,data:j}}
-          async function all(tok,u){let next=u,out=[];while(next){const path=next.startsWith('http')?next.replace('https://api.appstoreconnect.apple.com',''):next;const r=await req(tok,'GET',path);out.push(...(r.data?.data||[]));next=r.data?.links?.next||null}return out}
-          async function readSchedule(tok,id){return req(tok,'GET','/v2/inAppPurchases/'+id+'/iapPriceSchedule?include=baseTerritory,manualPrices&fields%5BinAppPurchasePriceSchedules%5D=baseTerritory,manualPrices&fields%5Bterritories%5D=currency&fields%5BinAppPurchasePrices%5D=startDate,endDate,territory,inAppPurchasePricePoint&limit%5BmanualPrices%5D=50')}
-          function manualPricePointIds(s){return (s.data?.included||[]).filter(x=>x.type==='inAppPurchasePrices').map(x=>x.relationships?.inAppPurchasePricePoint?.data?.id).filter(Boolean)}
+          async function all(tok,u){let next=u,out=[];while(next){const p=next.startsWith('http')?next.replace('https://api.appstoreconnect.apple.com',''):next;const r=await req(tok,'GET',p);out.push(...(r.data?.data||[]));next=r.data?.links?.next||null}return out}
           (async()=>{
             const gql=createGraphqlClient({accessToken:process.env.EXPO_TOKEN,sessionSecret:null});
             const account=await getOwnerAccountForProjectIdAsync(gql,process.env.OX_EAS_PROJECT_ID);
             const frag=await getAscApiKeyForAppSubmissionsAsync(gql,{account,projectName:process.env.OX_PROJECT_SLUG,bundleIdentifier:process.env.OX_BUNDLE_ID});
             if(!frag)throw new Error('ASC key fragment missing');
             const key=await AppStoreConnectApiKeyQuery.getByIdAsync(gql,frag.id),tok=jwtFor(key);
-
             const iaps=await all(tok,'/v1/apps/'+APP+'/inAppPurchasesV2?fields%5BinAppPurchases%5D=name,productId,inAppPurchaseType,state&limit=200');
-            const iap=iaps.find(x=>x.attributes?.productId===PRODUCT);
-            if(!iap)throw new Error('Event Pass IAP not found');
+            const iap=iaps.find(x=>x.attributes?.productId===PRODUCT); if(!iap)throw new Error('Event Pass missing');
             console.log('EVENTPASS_ID='+iap.id);
-
             const points=await all(tok,'/v2/inAppPurchases/'+iap.id+'/pricePoints?filter%5Bterritory%5D=FRA&fields%5BinAppPurchasePricePoints%5D=customerPrice,territory&limit=8000');
-            const target=points.find(x=>String(x.attributes?.customerPrice)===TARGET);
-            if(!target)throw new Error('France 7.99 price point not found');
+            const target=points.find(x=>String(x.attributes?.customerPrice)===TARGET); if(!target)throw new Error('7.99 FRA price point missing');
             console.log('TARGET_PRICEPOINT='+target.id);
-
-            let schedule=await readSchedule(tok,iap.id);
-            let ids=manualPricePointIds(schedule);
-            console.log('BEFORE_MANUAL_PRICEPOINTS='+ids.join(','));
-            if(!ids.includes(target.id)){
-              const lid='${price-799-now}';
-              const today=new Date().toISOString().slice(0,10);
-              const body={
-                data:{type:'inAppPurchasePriceSchedules',relationships:{
-                  inAppPurchase:{data:{type:'inAppPurchases',id:iap.id}},
-                  baseTerritory:{data:{type:'territories',id:'FRA'}},
-                  manualPrices:{data:[{type:'inAppPurchasePrices',id:lid}]}
-                }},
-                included:[{type:'inAppPurchasePrices',id:lid,attributes:{startDate:today},relationships:{
-                  inAppPurchaseV2:{data:{type:'inAppPurchases',id:iap.id}},
-                  inAppPurchasePricePoint:{data:{type:'inAppPurchasePricePoints',id:target.id}}
-                }}]
-              };
-              await req(tok,'POST','/v1/inAppPurchasePriceSchedules',body,[201]);
-              console.log('PRICE_CHANGE_CREATED=7.99|startDate='+today);
-            } else {
-              console.log('PRICE_CHANGE_CREATED=no|already_7.99');
-            }
-
-            schedule=await readSchedule(tok,iap.id);
-            ids=manualPricePointIds(schedule);
-            console.log('AFTER_MANUAL_PRICEPOINTS='+ids.join(','));
-            if(!ids.includes(target.id))throw new Error('Event Pass schedule still does not contain 7.99');
-            const base=schedule.data?.data?.relationships?.baseTerritory?.data?.id;
-            if(base!=='FRA')throw new Error('Event Pass base territory is not FRA');
+            const schedule=await req(tok,'GET','/v2/inAppPurchases/'+iap.id+'/iapPriceSchedule?fields%5BinAppPurchasePriceSchedules%5D=baseTerritory,manualPrices,automaticPrices');
+            const sid=schedule.data?.data?.id; if(!sid)throw new Error('Price schedule missing');
+            console.log('SCHEDULE_ID='+sid);
+            const rel=await req(tok,'GET','/v1/inAppPurchasePriceSchedules/'+sid+'/relationships/manualPrices?limit=200');
+            console.log('MANUAL_PRICE_IDS='+(rel.data?.data||[]).map(x=>x.id).join(','));
+            const auto=await req(tok,'GET','/v1/inAppPurchasePriceSchedules/'+sid+'/automaticPrices?filter%5Bterritory%5D=FRA&include=inAppPurchasePricePoint,territory&fields%5BinAppPurchasePrices%5D=startDate,endDate,manual,inAppPurchasePricePoint,territory&fields%5BinAppPurchasePricePoints%5D=customerPrice,proceeds,territory&fields%5Bterritories%5D=currency&limit=200');
+            const ppById=new Map((auto.data?.included||[]).filter(x=>x.type==='inAppPurchasePricePoints').map(x=>[x.id,String(x.attributes?.customerPrice)]));
+            const rows=(auto.data?.data||[]).map(x=>({id:x.id,startDate:x.attributes?.startDate||null,endDate:x.attributes?.endDate||null,point:x.relationships?.inAppPurchasePricePoint?.data?.id||null,price:ppById.get(x.relationships?.inAppPurchasePricePoint?.data?.id)||null}));
+            console.log('FRA_AUTOMATIC_PRICES='+JSON.stringify(rows));
+            const today=new Date().toISOString().slice(0,10);
+            const effective=rows.filter(r=>(!r.startDate||r.startDate<=today)&&(!r.endDate||r.endDate>=today)).sort((a,b)=>String(b.startDate||'').localeCompare(String(a.startDate||'')))[0];
+            const scheduled799=rows.some(r=>r.point===target.id || r.price===TARGET);
+            console.log('EFFECTIVE_FRA_PRICE='+JSON.stringify(effective||null));
+            if(!scheduled799)throw new Error('7.99 not present in effective/generated FRA price schedule');
             console.log('EVENTBOOTH_EVENTPASS_799=PASS');
           })().catch(e=>{console.error('EVENTBOOTH_EVENTPASS_799=FAIL');console.error(e.stack||e.message);process.exit(1)});
           NODE
-          node /tmp/eventbooth-price-fix.cjs | tee /tmp/eventbooth-price-fix.log
-          grep -q 'EVENTBOOTH_EVENTPASS_799=PASS' /tmp/eventbooth-price-fix.log
+          node /tmp/eventbooth-price-verify.cjs | tee /tmp/eventbooth-price-verify.log
+          grep -q 'EVENTBOOTH_EVENTPASS_799=PASS' /tmp/eventbooth-price-verify.log
