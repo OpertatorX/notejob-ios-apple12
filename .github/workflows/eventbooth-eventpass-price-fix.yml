@@ -30,7 +30,7 @@ jobs:
           mkdir -p /tmp/easlib
           npm install --prefix /tmp/easlib eas-cli@latest --ignore-scripts --no-audit --no-fund >/dev/null
 
-      - name: Verify Event Pass 7.99 EUR effective schedule
+      - name: Verify Event Pass manual price is 7.99 EUR
         shell: bash
         run: |
           set -euo pipefail
@@ -54,24 +54,20 @@ jobs:
             const key=await AppStoreConnectApiKeyQuery.getByIdAsync(gql,frag.id),tok=jwtFor(key);
             const iaps=await all(tok,'/v1/apps/'+APP+'/inAppPurchasesV2?fields%5BinAppPurchases%5D=name,productId,inAppPurchaseType,state&limit=200');
             const iap=iaps.find(x=>x.attributes?.productId===PRODUCT); if(!iap)throw new Error('Event Pass missing');
-            console.log('EVENTPASS_ID='+iap.id);
             const points=await all(tok,'/v2/inAppPurchases/'+iap.id+'/pricePoints?filter%5Bterritory%5D=FRA&fields%5BinAppPurchasePricePoints%5D=customerPrice,territory&limit=8000');
             const target=points.find(x=>String(x.attributes?.customerPrice)===TARGET); if(!target)throw new Error('7.99 FRA price point missing');
-            console.log('TARGET_PRICEPOINT='+target.id);
             const schedule=await req(tok,'GET','/v2/inAppPurchases/'+iap.id+'/iapPriceSchedule?fields%5BinAppPurchasePriceSchedules%5D=baseTerritory,manualPrices,automaticPrices');
             const sid=schedule.data?.data?.id; if(!sid)throw new Error('Price schedule missing');
-            console.log('SCHEDULE_ID='+sid);
-            const rel=await req(tok,'GET','/v1/inAppPurchasePriceSchedules/'+sid+'/relationships/manualPrices?limit=200');
-            console.log('MANUAL_PRICE_IDS='+(rel.data?.data||[]).map(x=>x.id).join(','));
-            const auto=await req(tok,'GET','/v1/inAppPurchasePriceSchedules/'+sid+'/automaticPrices?filter%5Bterritory%5D=FRA&include=inAppPurchasePricePoint,territory&fields%5BinAppPurchasePrices%5D=startDate,endDate,manual,inAppPurchasePricePoint,territory&fields%5BinAppPurchasePricePoints%5D=customerPrice,proceeds,territory&fields%5Bterritories%5D=currency&limit=200');
-            const ppById=new Map((auto.data?.included||[]).filter(x=>x.type==='inAppPurchasePricePoints').map(x=>[x.id,String(x.attributes?.customerPrice)]));
-            const rows=(auto.data?.data||[]).map(x=>({id:x.id,startDate:x.attributes?.startDate||null,endDate:x.attributes?.endDate||null,point:x.relationships?.inAppPurchasePricePoint?.data?.id||null,price:ppById.get(x.relationships?.inAppPurchasePricePoint?.data?.id)||null}));
-            console.log('FRA_AUTOMATIC_PRICES='+JSON.stringify(rows));
+            const manual=await req(tok,'GET','/v1/inAppPurchasePriceSchedules/'+sid+'/manualPrices?include=inAppPurchasePricePoint,territory&fields%5BinAppPurchasePrices%5D=startDate,endDate,manual,inAppPurchasePricePoint,territory&fields%5BinAppPurchasePricePoints%5D=customerPrice,proceeds,territory&fields%5Bterritories%5D=currency&limit=200');
+            const ppById=new Map((manual.data?.included||[]).filter(x=>x.type==='inAppPurchasePricePoints').map(x=>[x.id,String(x.attributes?.customerPrice)]));
+            const rows=(manual.data?.data||[]).map(x=>({id:x.id,startDate:x.attributes?.startDate||null,endDate:x.attributes?.endDate||null,point:x.relationships?.inAppPurchasePricePoint?.data?.id||null,price:ppById.get(x.relationships?.inAppPurchasePricePoint?.data?.id)||null,territory:x.relationships?.territory?.data?.id||null}));
+            console.log('EVENTPASS_ID='+iap.id);
+            console.log('TARGET_PRICEPOINT='+target.id);
+            console.log('MANUAL_PRICES='+JSON.stringify(rows));
             const today=new Date().toISOString().slice(0,10);
-            const effective=rows.filter(r=>(!r.startDate||r.startDate<=today)&&(!r.endDate||r.endDate>=today)).sort((a,b)=>String(b.startDate||'').localeCompare(String(a.startDate||'')))[0];
-            const scheduled799=rows.some(r=>r.point===target.id || r.price===TARGET);
-            console.log('EFFECTIVE_FRA_PRICE='+JSON.stringify(effective||null));
-            if(!scheduled799)throw new Error('7.99 not present in effective/generated FRA price schedule');
+            const matched=rows.find(r=>r.territory==='FRA'&&(r.point===target.id||r.price===TARGET)&&(!r.startDate||r.startDate<=today)&&(!r.endDate||r.endDate>=today));
+            if(!matched)throw new Error('No effective France manual price at 7.99');
+            console.log('EFFECTIVE_EVENTPASS_PRICE=7.99 EUR|start='+matched.startDate+'|end='+(matched.endDate||'none'));
             console.log('EVENTBOOTH_EVENTPASS_799=PASS');
           })().catch(e=>{console.error('EVENTBOOTH_EVENTPASS_799=FAIL');console.error(e.stack||e.message);process.exit(1)});
           NODE
