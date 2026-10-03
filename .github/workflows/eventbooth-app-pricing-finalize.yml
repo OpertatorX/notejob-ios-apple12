@@ -82,3 +82,5 @@ jobs:
           NODE
           node /tmp/eventbooth-app-pricing.cjs | tee /tmp/eventbooth-app-pricing.log
           grep -q 'EVENTBOOTH_APP_PRICING=PASS' /tmp/eventbooth-app-pricing.log
+
+# trigger 2
