@@ -1,0 +1,157 @@
+const crypto=require('crypto');
+const E='/tmp/easlib/node_modules/eas-cli/build';
+const {createGraphqlClient}=require(E+'/commandUtils/context/contextUtils/createGraphqlClient.js');
+const {getOwnerAccountForProjectIdAsync}=require(E+'/project/projectUtils.js');
+const {getAscApiKeyForAppSubmissionsAsync}=require(E+'/credentials/ios/api/GraphqlClient.js');
+const {AppStoreConnectApiKeyQuery}=require(E+'/graphql/queries/AppStoreConnectApiKeyQuery.js');
+
+const APP='6818422621';
+const BUNDLE='com.operatorx.eventbooth';
+const VERSION='1.0';
+const BUILD='11';
+const EXPECTED_POLICY='https://operatorx-eventbooth.vercel.app/privacy.html';
+const EXPECTED_SUPPORT='https://operatorx-eventbooth.vercel.app/support.html';
+const EXPECTED_MARKETING='https://operatorx-eventbooth.vercel.app';
+
+function assert(v,m){if(!v)throw new Error('ASSERT_FAIL='+m)}
+function b64url(x){return Buffer.from(x).toString('base64url')}
+function jwtFor(k){
+  const n=Math.floor(Date.now()/1000);
+  const h={alg:'ES256',kid:k.keyIdentifier,typ:'JWT'};
+  const p={iss:k.issuerIdentifier,iat:n-5,exp:n+900,aud:'appstoreconnect-v1'};
+  const s=b64url(JSON.stringify(h))+'.'+b64url(JSON.stringify(p));
+  return s+'.'+crypto.sign('sha256',Buffer.from(s),{key:k.keyP8,dsaEncoding:'ieee-p1363'}).toString('base64url');
+}
+async function req(tok,u,optional=false){
+  const r=await fetch('https://api.appstoreconnect.apple.com'+u,{headers:{Authorization:'Bearer '+tok}});
+  const t=await r.text(); let j={}; try{j=t?JSON.parse(t):{}}catch{}
+  if(!r.ok){if(optional)return{status:r.status,data:j};throw new Error('GET '+u+' -> '+r.status+' '+JSON.stringify(j?.errors||j).slice(0,1600))}
+  return{status:r.status,data:j};
+}
+async function all(tok,u){
+  let next=u,out=[];
+  while(next){const q=next.startsWith('http')?next.replace('https://api.appstoreconnect.apple.com',''):next;const r=await req(tok,q);out.push(...(r.data?.data||[]));next=r.data?.links?.next||null}
+  return out;
+}
+const attrs=x=>x?.attributes||{};
+const hasLocales=(rows,locales=['fr-FR','en-US'])=>locales.every(l=>rows.some(x=>attrs(x).locale===l));
+
+(async()=>{
+  const gql=createGraphqlClient({accessToken:process.env.EXPO_TOKEN,sessionSecret:null});
+  const account=await getOwnerAccountForProjectIdAsync(gql,process.env.OX_EAS_PROJECT_ID);
+  const frag=await getAscApiKeyForAppSubmissionsAsync(gql,{account,projectName:process.env.OX_PROJECT_SLUG,bundleIdentifier:process.env.OX_BUNDLE_ID});
+  assert(frag,'ASC_KEY_FRAGMENT_MISSING');
+  const key=await AppStoreConnectApiKeyQuery.getByIdAsync(gql,frag.id),tok=jwtFor(key);
+
+  const apps=await all(tok,'/v1/apps?filter%5BbundleId%5D='+encodeURIComponent(BUNDLE)+'&fields%5Bapps%5D=name,bundleId,primaryLocale,contentRightsDeclaration');
+  const app=apps.find(x=>x.id===APP);
+  assert(app,'APP_ID_OR_BUNDLE_MISMATCH');
+  assert(attrs(app).bundleId===BUNDLE,'BUNDLE_ID');
+  assert(attrs(app).contentRightsDeclaration==='DOES_NOT_USE_THIRD_PARTY_CONTENT','CONTENT_RIGHTS');
+  console.log('APP=PASS|'+APP+'|'+attrs(app).name);
+
+  const infos=await all(tok,'/v1/apps/'+APP+'/appInfos?fields%5BappInfos%5D=state,appStoreAgeRating&limit=50');
+  assert(infos.length>0,'APP_INFO_MISSING');
+  const info=infos[0];
+  const ilocs=await all(tok,'/v1/appInfos/'+info.id+'/appInfoLocalizations?fields%5BappInfoLocalizations%5D=locale,name,subtitle,privacyPolicyUrl&limit=50');
+  assert(hasLocales(ilocs),'APP_INFO_LOCALES');
+  for(const locale of ['fr-FR','en-US']){
+    const l=ilocs.find(x=>attrs(x).locale===locale),a=attrs(l);
+    assert(a.name&&a.name.length>=10,locale+'_NAME');
+    assert(a.subtitle&&a.subtitle.length>=10,locale+'_SUBTITLE');
+    assert(a.privacyPolicyUrl===EXPECTED_POLICY,locale+'_PRIVACY_URL');
+    console.log('INFO_LOCALIZATION=PASS|'+locale+'|'+a.name+'|'+a.subtitle);
+  }
+
+  const versions=await all(tok,'/v1/apps/'+APP+'/appStoreVersions?filter%5Bplatform%5D=IOS&filter%5BversionString%5D='+encodeURIComponent(VERSION)+'&fields%5BappStoreVersions%5D=versionString,appVersionState,releaseType,copyright');
+  assert(versions.length>0,'VERSION_1_0_MISSING');
+  const ver=versions[0],va=attrs(ver);
+  assert(va.versionString===VERSION,'VERSION_STRING');
+  assert(va.releaseType==='MANUAL','RELEASE_TYPE');
+  assert(va.copyright==='2026 OperatorX','COPYRIGHT');
+  console.log('VERSION=PASS|state='+va.appVersionState);
+
+  const vlocs=await all(tok,'/v1/appStoreVersions/'+ver.id+'/appStoreVersionLocalizations?fields%5BappStoreVersionLocalizations%5D=locale,description,keywords,marketingUrl,promotionalText,supportUrl&limit=50');
+  assert(hasLocales(vlocs),'VERSION_LOCALES');
+  for(const locale of ['fr-FR','en-US']){
+    const l=vlocs.find(x=>attrs(x).locale===locale),a=attrs(l);
+    assert((a.description||'').length>=700,locale+'_DESCRIPTION_TOO_SHORT');
+    assert((a.keywords||'').length>20&&(a.keywords||'').length<=100,locale+'_KEYWORDS');
+    assert((a.promotionalText||'').length>20,locale+'_PROMO_TEXT');
+    assert(a.supportUrl===EXPECTED_SUPPORT,locale+'_SUPPORT_URL');
+    assert(a.marketingUrl===EXPECTED_MARKETING,locale+'_MARKETING_URL');
+    const sets=await all(tok,'/v1/appStoreVersionLocalizations/'+l.id+'/appScreenshotSets?fields%5BappScreenshotSets%5D=screenshotDisplayType&limit=50');
+    for(const type of ['APP_IPHONE_65','APP_IPAD_PRO_3GEN_129']){
+      const set=sets.find(x=>attrs(x).screenshotDisplayType===type);
+      assert(set,locale+'_'+type+'_SET_MISSING');
+      const shots=await all(tok,'/v1/appScreenshotSets/'+set.id+'/appScreenshots?fields%5BappScreenshots%5D=fileName,assetDeliveryState&limit=50');
+      assert(shots.length===5,locale+'_'+type+'_COUNT_'+shots.length);
+      assert(shots.every(x=>attrs(x).assetDeliveryState?.state==='COMPLETE'),locale+'_'+type+'_PROCESSING');
+      console.log('SCREENSHOTS=PASS|'+locale+'|'+type+'|5');
+    }
+    console.log('VERSION_LOCALIZATION=PASS|'+locale+'|description='+a.description.length+'|keywords='+a.keywords.length);
+  }
+
+  const selected=await req(tok,'/v1/appStoreVersions/'+ver.id+'/build?fields%5Bbuilds%5D=version,processingState,expired,uploadedDate,usesNonExemptEncryption');
+  const build=selected.data?.data,ba=attrs(build);
+  assert(build,'SELECTED_BUILD_MISSING');
+  assert(ba.version===BUILD,'SELECTED_BUILD_NOT_11');
+  assert(ba.processingState==='VALID','BUILD_NOT_VALID');
+  assert(ba.expired===false,'BUILD_EXPIRED');
+  console.log('BUILD=PASS|11|'+build.id+'|uploaded='+ba.uploadedDate);
+
+  const review=await req(tok,'/v1/appStoreVersions/'+ver.id+'/appStoreReviewDetail?fields%5BappStoreReviewDetails%5D=contactFirstName,contactLastName,contactPhone,contactEmail,demoAccountRequired,notes',true);
+  assert(review.status===200&&review.data?.data,'REVIEW_DETAIL_MISSING');
+  const ra=attrs(review.data.data);
+  assert(ra.contactFirstName&&ra.contactLastName&&ra.contactPhone&&ra.contactEmail,'REVIEW_CONTACT_INCOMPLETE');
+  assert(ra.demoAccountRequired===false,'DEMO_ACCOUNT_FLAG');
+  assert((ra.notes||'').length>80,'REVIEW_NOTES_TOO_SHORT');
+  console.log('REVIEW_DETAIL=PASS|contact='+ra.contactEmail);
+
+  const iaps=await all(tok,'/v1/apps/'+APP+'/inAppPurchasesV2?fields%5BinAppPurchases%5D=name,productId,inAppPurchaseType,state,reviewNote&limit=200');
+  const iap=iaps.find(x=>attrs(x).productId==='com.operatorx.eventbooth.eventpass');
+  assert(iap,'EVENT_PASS_MISSING');
+  assert(attrs(iap).inAppPurchaseType==='CONSUMABLE','EVENT_PASS_TYPE');
+  const idetail=await req(tok,'/v2/inAppPurchases/'+iap.id+'?include=versions&fields%5BinAppPurchases%5D=name,productId,state,reviewNote,versions&fields%5BinAppPurchaseVersions%5D=version,state');
+  const versionsIncluded=(idetail.data?.included||[]).filter(x=>x.type==='inAppPurchaseVersions');
+  assert(versionsIncluded.length>0,'EVENT_PASS_VERSION_MISSING');
+  const iv=versionsIncluded.find(x=>attrs(x).state==='PREPARE_FOR_SUBMISSION')||versionsIncluded[0];
+  const il=await all(tok,'/v1/inAppPurchaseVersions/'+iv.id+'/localizations?fields%5BinAppPurchaseLocalizations%5D=locale,name,description&limit=50');
+  assert(hasLocales(il),'EVENT_PASS_LOCALIZATIONS');
+
+  const fraIapPoints=await all(tok,'/v2/inAppPurchases/'+iap.id+'/pricePoints?filter%5Bterritory%5D=FRA&fields%5BinAppPurchasePricePoints%5D=customerPrice,territory&limit=8000');
+  const pp799=fraIapPoints.find(x=>String(attrs(x).customerPrice)==='7.99');
+  assert(pp799,'EVENT_PASS_799_PRICEPOINT_MISSING');
+  const sched=await req(tok,'/v2/inAppPurchases/'+iap.id+'/iapPriceSchedule?fields%5BinAppPurchasePriceSchedules%5D=baseTerritory,manualPrices,automaticPrices');
+  const scheduleId=sched.data?.data?.id;
+  const baseRel=await req(tok,'/v1/inAppPurchasePriceSchedules/'+scheduleId+'/relationships/baseTerritory');
+  assert(baseRel.data?.data?.id==='FRA','EVENT_PASS_BASE_TERRITORY');
+  const manual=await req(tok,'/v1/inAppPurchasePriceSchedules/'+scheduleId+'/manualPrices?include=inAppPurchasePricePoint,territory&fields%5BinAppPurchasePrices%5D=startDate,endDate,manual,inAppPurchasePricePoint,territory&fields%5BinAppPurchasePricePoints%5D=customerPrice,proceeds,territory&fields%5Bterritories%5D=currency&limit=200');
+  const ppById=new Map((manual.data?.included||[]).filter(x=>x.type==='inAppPurchasePricePoints').map(x=>[x.id,String(attrs(x).customerPrice)]));
+  const today=new Date().toISOString().slice(0,10);
+  const manualRows=(manual.data?.data||[]).map(x=>({startDate:attrs(x).startDate||null,endDate:attrs(x).endDate||null,point:x.relationships?.inAppPurchasePricePoint?.data?.id||null,price:ppById.get(x.relationships?.inAppPurchasePricePoint?.data?.id)||null,territory:x.relationships?.territory?.data?.id||null}));
+  const eventPass799=manualRows.find(r=>r.territory==='FRA'&&(r.point===pp799.id||r.price==='7.99')&&(!r.startDate||r.startDate<=today)&&(!r.endDate||r.endDate>=today));
+  assert(eventPass799,'EVENT_PASS_PRICE_NOT_799');
+  const iapShot=await req(tok,'/v2/inAppPurchases/'+iap.id+'/appStoreReviewScreenshot?fields%5BinAppPurchaseAppStoreReviewScreenshots%5D=fileName,assetDeliveryState',true);
+  assert(iapShot.status===200&&attrs(iapShot.data?.data).assetDeliveryState?.state==='COMPLETE','EVENT_PASS_REVIEW_SCREENSHOT');
+  console.log('EVENT_PASS=PASS|7.99 EUR|state='+attrs(iap).state);
+
+  const groups=await all(tok,'/v1/apps/'+APP+'/subscriptionGroups?fields%5BsubscriptionGroups%5D=referenceName&limit=100');
+  let sub=null;
+  for(const g of groups){const rows=await all(tok,'/v1/subscriptionGroups/'+g.id+'/subscriptions?fields%5Bsubscriptions%5D=name,productId,subscriptionPeriod,state,reviewNote&limit=100');sub=rows.find(x=>attrs(x).productId==='com.operatorx.eventbooth.pro.annual')||sub}
+  assert(sub,'PRO_ANNUAL_MISSING');
+  assert(attrs(sub).subscriptionPeriod==='ONE_YEAR','PRO_PERIOD');
+  const sl=await all(tok,'/v1/subscriptions/'+sub.id+'/subscriptionLocalizations?fields%5BsubscriptionLocalizations%5D=locale,name,description&limit=50');
+  assert(hasLocales(sl),'PRO_LOCALIZATIONS');
+  const subShot=await req(tok,'/v1/subscriptions/'+sub.id+'/appStoreReviewScreenshot?fields%5BsubscriptionAppStoreReviewScreenshots%5D=fileName,assetDeliveryState',true);
+  assert(subShot.status===200&&attrs(subShot.data?.data).assetDeliveryState?.state==='COMPLETE','PRO_REVIEW_SCREENSHOT');
+  const prices=await req(tok,'/v1/subscriptions/'+sub.id+'/prices?filter%5Bterritory%5D=FRA&include=subscriptionPricePoint&fields%5BsubscriptionPrices%5D=startDate,preserved,territory,subscriptionPricePoint&fields%5BsubscriptionPricePoints%5D=customerPrice&limit=200',true);
+  assert(prices.status===200,'PRO_PRICES_ENDPOINT_'+prices.status);
+  const included=prices.data?.included||[];
+  const activePriceIds=(prices.data?.data||[]).map(x=>x.relationships?.subscriptionPricePoint?.data?.id).filter(Boolean);
+  const has3999=included.some(x=>x.type==='subscriptionPricePoints'&&activePriceIds.includes(x.id)&&String(attrs(x).customerPrice)==='39.99');
+  assert(has3999,'PRO_ACTIVE_PRICE_NOT_39_99');
+  console.log('PRO_ANNUAL=PASS|39.99 EUR/year|state='+attrs(sub).state);
+
+  console.log('EVENTBOOTH_FINAL_ASC_AUDIT=PASS');
+})().catch(e=>{console.error('EVENTBOOTH_FINAL_ASC_AUDIT=FAIL');console.error(e.stack||e.message);process.exit(1)});
