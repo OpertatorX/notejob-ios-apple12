@@ -1,0 +1,44 @@
+name: Event Booth final ASC audit v2
+
+on:
+  push:
+    branches: [eventbooth-asc-internal]
+    paths: [".github/workflows/eventbooth-final-asc-audit-v2.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      OX_EAS_PROJECT_ID: "a8ec463b-a530-41c9-af1f-c5499359f881"
+      OX_PROJECT_SLUG: "ox-invoice"
+      OX_BUNDLE_ID: "com.operatorx.oxinvoice"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Verify public pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          for url in https://operatorx-eventbooth.vercel.app https://operatorx-eventbooth.vercel.app/privacy.html https://operatorx-eventbooth.vercel.app/support.html; do
+            code="$(curl -L -sS -o /tmp/page.html -w '%{http_code}' --max-time 30 "$url")"
+            test "$code" = "200"
+            test -s /tmp/page.html
+            echo "PUBLIC_PAGE=PASS|$url"
+          done
+      - name: Install ASC auth library
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/easlib
+          npm install --prefix /tmp/easlib eas-cli@latest --ignore-scripts --no-audit --no-fund >/dev/null
+      - name: Audit live App Store Connect state
+        run: |
+          set -euo pipefail
+          node internal/eventbooth/final_asc_audit.cjs | tee /tmp/eventbooth-final-asc-audit.log
+          grep -q 'EVENTBOOTH_FINAL_ASC_AUDIT=PASS' /tmp/eventbooth-final-asc-audit.log
