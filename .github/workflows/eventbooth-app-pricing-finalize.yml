@@ -1,0 +1,84 @@
+name: Event Booth app pricing finalize
+
+on:
+  push:
+    branches: [eventbooth-asc-internal]
+    paths: [".github/workflows/eventbooth-app-pricing-finalize.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  pricing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      OX_EAS_PROJECT_ID: "a8ec463b-a530-41c9-af1f-c5499359f881"
+      OX_PROJECT_SLUG: "ox-invoice"
+      OX_BUNDLE_ID: "com.operatorx.oxinvoice"
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install ASC auth library
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/easlib
+          npm install --prefix /tmp/easlib eas-cli@latest --ignore-scripts --no-audit --no-fund >/dev/null
+      - name: Ensure app is free in France and audit availability
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >/tmp/eventbooth-app-pricing.cjs <<'NODE'
+          const crypto=require('crypto');
+          const E='/tmp/easlib/node_modules/eas-cli/build';
+          const {createGraphqlClient}=require(E+'/commandUtils/context/contextUtils/createGraphqlClient.js');
+          const {getOwnerAccountForProjectIdAsync}=require(E+'/project/projectUtils.js');
+          const {getAscApiKeyForAppSubmissionsAsync}=require(E+'/credentials/ios/api/GraphqlClient.js');
+          const {AppStoreConnectApiKeyQuery}=require(E+'/graphql/queries/AppStoreConnectApiKeyQuery.js');
+          const APP='6818422621';
+          const b64url=x=>Buffer.from(x).toString('base64url');
+          function jwtFor(k){const n=Math.floor(Date.now()/1000),h={alg:'ES256',kid:k.keyIdentifier,typ:'JWT'},p={iss:k.issuerIdentifier,iat:n-5,exp:n+900,aud:'appstoreconnect-v1'};const s=b64url(JSON.stringify(h))+'.'+b64url(JSON.stringify(p));return s+'.'+crypto.sign('sha256',Buffer.from(s),{key:k.keyP8,dsaEncoding:'ieee-p1363'}).toString('base64url')}
+          async function req(tok,m,u,b=null,ok=[200]){const r=await fetch('https://api.appstoreconnect.apple.com'+u,{method:m,headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});const t=await r.text();let j={};try{j=t?JSON.parse(t):{}}catch{};if(!ok.includes(r.status)){const safe=j?.errors?.map(e=>({status:e.status,code:e.code,title:e.title,detail:e.detail,source:e.source}))??j;throw new Error(m+' '+u+' -> '+r.status+' '+JSON.stringify(safe).slice(0,1600))}return{status:r.status,data:j}}
+          async function all(tok,u){let next=u,out=[];while(next){const p=next.startsWith('http')?next.replace('https://api.appstoreconnect.apple.com',''):next;const r=await req(tok,'GET',p);out.push(...(r.data?.data||[]));next=r.data?.links?.next||null}return out}
+          (async()=>{
+            const gql=createGraphqlClient({accessToken:process.env.EXPO_TOKEN,sessionSecret:null});
+            const account=await getOwnerAccountForProjectIdAsync(gql,process.env.OX_EAS_PROJECT_ID);
+            const frag=await getAscApiKeyForAppSubmissionsAsync(gql,{account,projectName:process.env.OX_PROJECT_SLUG,bundleIdentifier:process.env.OX_BUNDLE_ID});
+            if(!frag)throw new Error('ASC key fragment missing');
+            const key=await AppStoreConnectApiKeyQuery.getByIdAsync(gql,frag.id),tok=jwtFor(key);
+
+            let sched=await req(tok,'GET','/v1/apps/'+APP+'/appPriceSchedule?include=baseTerritory,manualPrices&fields%5BappPriceSchedules%5D=baseTerritory,manualPrices&fields%5BappPrices%5D=startDate,endDate,manual,appPricePoint,territory',null,[200,404]);
+            if(sched.status===404 || !sched.data?.data){
+              const points=await all(tok,'/v1/apps/'+APP+'/appPricePoints?filter%5Bterritory%5D=FRA&fields%5BappPricePoints%5D=customerPrice,proceeds,territory&limit=200');
+              const free=points.find(x=>Number(x.attributes?.customerPrice)===0);
+              if(!free)throw new Error('FREE_FRA_PRICE_POINT_MISSING');
+              const lid='${price-free-fr}';
+              const body={data:{type:'appPriceSchedules',relationships:{app:{data:{type:'apps',id:APP}},baseTerritory:{data:{type:'territories',id:'FRA'}},manualPrices:{data:[{type:'appPrices',id:lid}]}}},included:[{type:'appPrices',id:lid,attributes:{startDate:null,endDate:null},relationships:{appPricePoint:{data:{type:'appPricePoints',id:free.id}}}}]};
+              await req(tok,'POST','/v1/appPriceSchedules',body,[201]);
+              console.log('APP_PRICE_CREATED=FREE|FRA');
+              sched=await req(tok,'GET','/v1/apps/'+APP+'/appPriceSchedule?include=baseTerritory,manualPrices&fields%5BappPriceSchedules%5D=baseTerritory,manualPrices&fields%5BappPrices%5D=startDate,endDate,manual,appPricePoint,territory');
+            }
+
+            const sid=sched.data?.data?.id;
+            if(!sid)throw new Error('APP_PRICE_SCHEDULE_MISSING');
+            const base=(sched.data?.included||[]).find(x=>x.type==='territories')?.id || sched.data?.data?.relationships?.baseTerritory?.data?.id || null;
+            const manual=await req(tok,'GET','/v1/appPriceSchedules/'+sid+'/manualPrices?include=appPricePoint,territory&fields%5BappPrices%5D=startDate,endDate,manual,appPricePoint,territory&fields%5BappPricePoints%5D=customerPrice,proceeds,territory&fields%5Bterritories%5D=currency&limit=50');
+            const pp=new Map((manual.data?.included||[]).filter(x=>x.type==='appPricePoints').map(x=>[x.id,Number(x.attributes?.customerPrice)]));
+            const rows=(manual.data?.data||[]).map(x=>({start:x.attributes?.startDate||null,end:x.attributes?.endDate||null,territory:x.relationships?.territory?.data?.id||null,price:pp.get(x.relationships?.appPricePoint?.data?.id)}));
+            const today=new Date().toISOString().slice(0,10);
+            const freeActive=rows.some(r=>(r.territory==='FRA'||base==='FRA')&&r.price===0&&(!r.start||r.start<=today)&&(!r.end||r.end>=today));
+            if(!freeActive)throw new Error('APP_BASE_PRICE_NOT_FREE|base='+base+'|rows='+JSON.stringify(rows));
+
+            const av=await req(tok,'GET','/v1/apps/'+APP+'/appAvailabilityV2?include=territoryAvailabilities&fields%5BappAvailabilities%5D=availableInNewTerritories,territoryAvailabilities&fields%5BterritoryAvailabilities%5D=available,territory',null,[200,404]);
+            if(av.status!==200||!av.data?.data)throw new Error('APP_AVAILABILITY_MISSING');
+            const territories=(av.data?.included||[]).filter(x=>x.type==='territoryAvailabilities');
+            const availableCount=territories.filter(x=>x.attributes?.available===true).length;
+            console.log('APP_PRICE=PASS|FREE|baseTerritory='+base);
+            console.log('APP_AVAILABILITY=PASS|availableInNewTerritories='+av.data.data.attributes?.availableInNewTerritories+'|availableTerritories='+availableCount);
+            console.log('EVENTBOOTH_APP_PRICING=PASS');
+          })().catch(e=>{console.error('EVENTBOOTH_APP_PRICING=FAIL');console.error(e.stack||e.message);process.exit(1)});
+          NODE
+          node /tmp/eventbooth-app-pricing.cjs | tee /tmp/eventbooth-app-pricing.log
+          grep -q 'EVENTBOOTH_APP_PRICING=PASS' /tmp/eventbooth-app-pricing.log
