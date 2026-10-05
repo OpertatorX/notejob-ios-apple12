@@ -215,7 +215,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet PyJWT requests
+          python3 -m pip install --quiet --break-system-packages PyJWT requests
           export ASC_APP_ID=6819357656
           export ASC_VERSION=1.0.0
           export ASC_KEY_ID="$(cat "$RUNNER_TEMP/asc-key-id.txt")"
@@ -231,7 +231,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet PyJWT requests
+          python3 -m pip install --quiet --break-system-packages PyJWT requests
           export ASC_APP_ID=6819357656
           export ASC_VERSION=1.0.0
           export ASC_KEY_ID="$(cat "$RUNNER_TEMP/asc-key-id.txt")"
