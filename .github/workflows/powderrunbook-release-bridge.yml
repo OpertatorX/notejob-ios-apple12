@@ -13,6 +13,11 @@ on:
         required: true
         default: false
         type: boolean
+      finalize_only:
+        description: 'Skip Xcode build and only finalize App Store Connect'
+        required: true
+        default: false
+        type: boolean
 
 jobs:
   release:
@@ -31,7 +36,7 @@ jobs:
 
       - name: Install build tools
         run: |
-          brew install xcodegen
+          if [ "${{ inputs.finalize_only }}" != "true" ]; then brew install xcodegen; fi
           npm install -g eas-cli@23.2.0
 
       - name: Recover Factory signing material and provision PowderRunbook
@@ -108,10 +113,12 @@ jobs:
           node "$RUNNER_TEMP/prepare-signing.js"
 
       - name: Generate Xcode project
+        if: ${{ !inputs.finalize_only }}
         working-directory: powder
         run: xcodegen generate
 
       - name: Install signing credentials
+        if: ${{ !inputs.finalize_only }}
         shell: bash
         run: |
           set -euo pipefail
@@ -132,6 +139,7 @@ jobs:
           echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
 
       - name: Archive signed app
+        if: ${{ !inputs.finalize_only }}
         working-directory: powder
         run: |
           set -euo pipefail
@@ -149,6 +157,7 @@ jobs:
             archive
 
       - name: Audit production archive
+        if: ${{ !inputs.finalize_only }}
         working-directory: powder
         run: |
           set -euo pipefail
@@ -173,6 +182,7 @@ jobs:
           codesign -d --entitlements :- "$APP" 2>&1 | tee "$PWD/artifacts/entitlements.txt"
 
       - name: Export IPA
+        if: ${{ !inputs.finalize_only }}
         working-directory: powder
         run: |
           set -euo pipefail
@@ -198,7 +208,7 @@ jobs:
           shasum -a 256 "$IPA" | tee "$PWD/artifacts/IPA_SHA256.txt"
 
       - name: Upload to App Store Connect
-        if: ${{ inputs.upload_to_asc }}
+        if: ${{ inputs.upload_to_asc && !inputs.finalize_only }}
         working-directory: powder
         run: |
           set -euo pipefail
