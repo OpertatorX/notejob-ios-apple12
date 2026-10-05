@@ -152,10 +152,20 @@ jobs:
           plutil -p "$APP/Info.plist" | tee "$PWD/artifacts/archive-info-plist.txt"
           grep -F 'com.operatorx.powderrunbook' "$PWD/artifacts/archive-info-plist.txt"
           test -f "$APP/PrivacyInfo.xcprivacy"
+          plutil -p "$APP/PrivacyInfo.xcprivacy" | tee "$PWD/artifacts/privacy-manifest.txt"
+          grep -F 'CA92.1' "$PWD/artifacts/privacy-manifest.txt"
+          /usr/libexec/PlistBuddy -c 'Print :UISupportedInterfaceOrientations' "$APP/Info.plist" | tee "$PWD/artifacts/iphone-orientations.txt"
+          /usr/libexec/PlistBuddy -c 'Print :UISupportedInterfaceOrientations~ipad' "$APP/Info.plist" | tee "$PWD/artifacts/ipad-orientations.txt"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :UISupportedInterfaceOrientations' "$APP/Info.plist" | grep -c UIInterfaceOrientation)" -eq 1
+          if strings "$APP/PowderRunbook" | grep -E -- '-store-demo|-screen='; then
+            echo 'ERROR: screenshot-only DEBUG launch hooks leaked into Release' >&2
+            exit 30
+          fi
           if grep -R -E 'GADApplicationIdentifier|NSUserTrackingUsageDescription|ca-app-pub' "$APP"; then
             echo 'ERROR: unexpected ad/tracking identifier present' >&2
             exit 31
           fi
+          codesign -d --entitlements :- "$APP" 2>&1 | tee "$PWD/artifacts/entitlements.txt"
 
       - name: Export IPA
         working-directory: powder
@@ -203,4 +213,8 @@ jobs:
             powder/artifacts/export/*.ipa
             powder/artifacts/IPA_SHA256.txt
             powder/artifacts/archive-info-plist.txt
+            powder/artifacts/privacy-manifest.txt
+            powder/artifacts/iphone-orientations.txt
+            powder/artifacts/ipad-orientations.txt
+            powder/artifacts/entitlements.txt
           retention-days: 14
