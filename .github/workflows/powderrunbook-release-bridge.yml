@@ -1,0 +1,206 @@
+name: PowderRunbook Release Bridge
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_to_asc:
+        description: 'Upload IPA to App Store Connect'
+        required: true
+        default: false
+        type: boolean
+
+jobs:
+  release:
+    runs-on: macos-latest
+    timeout-minutes: 50
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      TEAM_ID: 67ZL6VYTQ8
+      BUNDLE_ID: com.operatorx.powderrunbook
+    steps:
+      - name: Checkout PowderRunbook source
+        uses: actions/checkout@v4
+        with:
+          repository: OpertatorX/powderrunbook-ios-public
+          path: powder
+
+      - name: Install build tools
+        run: |
+          brew install xcodegen
+          npm install -g eas-cli@23.2.0
+
+      - name: Recover Factory signing material and provision PowderRunbook
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$EXPO_TOKEN"
+          cat > "$RUNNER_TEMP/prepare-signing.js" <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const cp = require('child_process');
+          const root = cp.execSync('npm root -g').toString().trim();
+          const EAS = path.join(root, 'eas-cli', 'build');
+          const AU = require(path.join(root, 'eas-cli', 'node_modules', '@expo', 'apple-utils'));
+          const SessionManager = require(path.join(EAS, 'user', 'SessionManager.js')).default;
+          const { createGraphqlClient } = require(path.join(EAS, 'commandUtils', 'context', 'contextUtils', 'createGraphqlClient.js'));
+          const { AppleDistributionCertificateQuery } = require(path.join(EAS, 'credentials', 'ios', 'api', 'graphql', 'queries', 'AppleDistributionCertificateQuery.js'));
+          const { AppStoreConnectApiKeyQuery } = require(path.join(EAS, 'credentials', 'ios', 'api', 'graphql', 'queries', 'AppStoreConnectApiKeyQuery.js'));
+          const { AppStoreConnectApiKeyQuery: KeyByIdQuery } = require(path.join(EAS, 'graphql', 'queries', 'AppStoreConnectApiKeyQuery.js'));
+
+          const ACCOUNT = 'operatorx';
+          const TEAM = '67ZL6VYTQ8';
+          const BUNDLE = 'com.operatorx.powderrunbook';
+          const CERT_PORTAL_ID = 'PAZD4J6SU3';
+          const out = process.env.RUNNER_TEMP;
+
+          (async () => {
+            const sm = new SessionManager({ setActor() {} });
+            const { authenticationInfo } = await sm.ensureLoggedInAsync({ nonInteractive: true });
+            const gc = createGraphqlClient(authenticationInfo);
+
+            const certs = await AppleDistributionCertificateQuery.getAllForAccountAsync(gc, ACCOUNT);
+            const cert = certs.find(c => c.developerPortalIdentifier === CERT_PORTAL_ID);
+            if (!cert) throw new Error('Factory Apple Distribution certificate not found');
+
+            const keys = await AppStoreConnectApiKeyQuery.getAllForAccountAsync(gc, ACCOUNT);
+            const keyMeta = keys.find(k => k.appleTeam?.appleTeamIdentifier === TEAM || k.appleTeam?.id === TEAM) || keys[0];
+            if (!keyMeta) throw new Error('Factory App Store Connect API key not found');
+            const key = await KeyByIdQuery.getByIdAsync(gc, keyMeta.id);
+
+            const context = { token: new AU.Token({ key: key.keyP8, issuerId: key.issuerIdentifier, keyId: key.keyIdentifier, duration: 1200 }) };
+            let bundle = await AU.BundleId.findAsync(context, { identifier: BUNDLE });
+            if (!bundle) bundle = await AU.BundleId.createAsync(context, { name: 'PowderRunbook', identifier: BUNDLE, platform: AU.BundleIdPlatform.IOS });
+
+            const profiles = await AU.Profile.getAsync(context, { query: { filter: { profileType: AU.ProfileType.IOS_APP_STORE } } });
+            let profile = null;
+            for (const p of profiles) {
+              try {
+                const b = await p.getBundleIdAsync();
+                if (b?.attributes?.identifier === BUNDLE && p.isValid()) { profile = p; break; }
+              } catch {}
+            }
+            if (!profile) {
+              profile = await AU.Profile.createAsync(context, {
+                bundleId: bundle.id,
+                certificates: [cert.id],
+                devices: [],
+                name: 'PowderRunbook App Store',
+                profileType: AU.ProfileType.IOS_APP_STORE,
+              });
+            }
+            if (!profile.attributes.profileContent) throw new Error('Provisioning profile content missing');
+
+            fs.writeFileSync(path.join(out, 'distribution.p12'), Buffer.from(cert.certificateP12, 'base64'));
+            fs.writeFileSync(path.join(out, 'p12-password.txt'), cert.certificatePassword);
+            fs.writeFileSync(path.join(out, 'PowderRunbook.mobileprovision'), Buffer.from(profile.attributes.profileContent, 'base64'));
+            fs.writeFileSync(path.join(out, 'asc-key.p8'), key.keyP8);
+            fs.writeFileSync(path.join(out, 'profile-name.txt'), profile.attributes.name);
+            fs.writeFileSync(path.join(out, 'asc-key-id.txt'), key.keyIdentifier);
+            fs.writeFileSync(path.join(out, 'asc-issuer-id.txt'), key.issuerIdentifier);
+            console.log(JSON.stringify({ status: 'SIGNING_READY', profile: profile.attributes.name, certificate: cert.developerPortalIdentifier }));
+          })().catch(e => { console.error(e.stack || e); process.exit(1); });
+          NODE
+          node "$RUNNER_TEMP/prepare-signing.js"
+
+      - name: Generate Xcode project
+        working-directory: powder
+        run: xcodegen generate
+
+      - name: Install signing credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/powderrunbook.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          P12_PASSWORD="$(cat "$RUNNER_TEMP/p12-password.txt")"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/distribution.p12" -k "$KEYCHAIN" -P "$P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychain -d user -s "$KEYCHAIN" login.keychain-db
+          security cms -D -i "$RUNNER_TEMP/PowderRunbook.mobileprovision" > "$RUNNER_TEMP/profile.plist"
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print UUID' "$RUNNER_TEMP/profile.plist")
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print Name' "$RUNNER_TEMP/profile.plist")
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$RUNNER_TEMP/PowderRunbook.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
+
+      - name: Archive signed app
+        working-directory: powder
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          xcodebuild \
+            -project PowderRunbook.xcodeproj \
+            -scheme PowderRunbook \
+            -configuration Release \
+            -archivePath "$PWD/artifacts/PowderRunbook.xcarchive" \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            CODE_SIGN_IDENTITY='Apple Distribution' \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+            archive
+
+      - name: Audit production archive
+        working-directory: powder
+        run: |
+          set -euo pipefail
+          APP="$PWD/artifacts/PowderRunbook.xcarchive/Products/Applications/PowderRunbook.app"
+          test -d "$APP"
+          plutil -p "$APP/Info.plist" | tee "$PWD/artifacts/archive-info-plist.txt"
+          grep -F 'com.operatorx.powderrunbook' "$PWD/artifacts/archive-info-plist.txt"
+          test -f "$APP/PrivacyInfo.xcprivacy"
+          if grep -R -E 'GADApplicationIdentifier|NSUserTrackingUsageDescription|ca-app-pub' "$APP"; then
+            echo 'ERROR: unexpected ad/tracking identifier present' >&2
+            exit 31
+          fi
+
+      - name: Export IPA
+        working-directory: powder
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+          <key>method</key><string>app-store-connect</string>
+          <key>signingStyle</key><string>manual</string>
+          <key>teamID</key><string>${TEAM_ID}</string>
+          <key>signingCertificate</key><string>Apple Distribution</string>
+          <key>provisioningProfiles</key><dict>
+          <key>${BUNDLE_ID}</key><string>${PROFILE_NAME}</string>
+          </dict>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive \
+            -archivePath "$PWD/artifacts/PowderRunbook.xcarchive" \
+            -exportPath "$PWD/artifacts/export" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+          IPA=$(find "$PWD/artifacts/export" -name '*.ipa' -print -quit)
+          test -n "$IPA"
+          shasum -a 256 "$IPA" | tee "$PWD/artifacts/IPA_SHA256.txt"
+
+      - name: Upload to App Store Connect
+        if: ${{ inputs.upload_to_asc }}
+        working-directory: powder
+        run: |
+          set -euo pipefail
+          ASC_KEY_ID="$(cat "$RUNNER_TEMP/asc-key-id.txt")"
+          ASC_ISSUER_ID="$(cat "$RUNNER_TEMP/asc-issuer-id.txt")"
+          mkdir -p "$HOME/private_keys"
+          cp "$RUNNER_TEMP/asc-key.p8" "$HOME/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          IPA=$(find "$PWD/artifacts/export" -name '*.ipa' -print -quit)
+          xcrun altool --upload-app --type ios --file "$IPA" --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: PowderRunbook-AppStore-IPA
+          path: |
+            powder/artifacts/export/*.ipa
+            powder/artifacts/IPA_SHA256.txt
+            powder/artifacts/archive-info-plist.txt
+          retention-days: 14
