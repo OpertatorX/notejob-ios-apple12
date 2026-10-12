@@ -60,9 +60,7 @@ jobs:
             const { authenticationInfo } = await sm.ensureLoggedInAsync({ nonInteractive: true });
             const gc = createGraphqlClient(authenticationInfo);
 
-            const certs = await AppleDistributionCertificateQuery.getAllForAccountAsync(gc, ACCOUNT);
-            const cert = certs.find(c => c.developerPortalIdentifier === PREFERRED_CERT_PORTAL_ID) || certs.find(c => c.certificateP12 && c.certificatePassword);
-            if (!cert) throw new Error('Factory Apple Distribution certificate not found');
+            const storedCerts = await AppleDistributionCertificateQuery.getAllForAccountAsync(gc, ACCOUNT);
 
             const keys = await AppStoreConnectApiKeyQuery.getAllForAccountAsync(gc, ACCOUNT);
             const keyMeta = keys.find(k => k.appleTeam?.appleTeamIdentifier === TEAM || k.appleTeam?.id === TEAM) || keys[0];
@@ -70,6 +68,12 @@ jobs:
             const key = await KeyByIdQuery.getByIdAsync(gc, keyMeta.id);
 
             const context = { token: new AU.Token({ key: key.keyP8, issuerId: key.issuerIdentifier, keyId: key.keyIdentifier, duration: 1200 }) };
+            const portalCerts = await AU.Certificate.getAsync(context);
+            const usableStored = storedCerts.filter(c => c.certificateP12 && c.certificatePassword);
+            const storedCert = usableStored.find(c => portalCerts.some(pc => pc.id === c.developerPortalIdentifier || pc.attributes?.serialNumber === c.serialNumber));
+            if (!storedCert) throw new Error('No active Apple Distribution certificate with recoverable private key');
+            const portalCert = portalCerts.find(pc => pc.id === storedCert.developerPortalIdentifier || pc.attributes?.serialNumber === storedCert.serialNumber);
+            if (!portalCert) throw new Error('Active Apple certificate mapping failed');
             let bundle = await AU.BundleId.findAsync(context, { identifier: BUNDLE });
             if (!bundle) {
               bundle = await AU.BundleId.createAsync(context, { name: 'PullPath AR', identifier: BUNDLE, platform: AU.BundleIdPlatform.IOS });
@@ -86,7 +90,7 @@ jobs:
             if (!profile) {
               profile = await AU.Profile.createAsync(context, {
                 bundleId: bundle.id,
-                certificates: [cert.id],
+                certificates: [portalCert.id],
                 devices: [],
                 name: 'PullPath AR App Store',
                 profileType: AU.ProfileType.IOS_APP_STORE,
@@ -94,14 +98,14 @@ jobs:
             }
             if (!profile.attributes.profileContent) throw new Error('Provisioning profile content missing');
 
-            fs.writeFileSync(path.join(out, 'distribution.p12'), Buffer.from(cert.certificateP12, 'base64'));
-            fs.writeFileSync(path.join(out, 'p12-password.txt'), cert.certificatePassword);
+            fs.writeFileSync(path.join(out, 'distribution.p12'), Buffer.from(storedCert.certificateP12, 'base64'));
+            fs.writeFileSync(path.join(out, 'p12-password.txt'), storedCert.certificatePassword);
             fs.writeFileSync(path.join(out, 'PullPathAR.mobileprovision'), Buffer.from(profile.attributes.profileContent, 'base64'));
             fs.writeFileSync(path.join(out, 'asc-key.p8'), key.keyP8);
             fs.writeFileSync(path.join(out, 'profile-name.txt'), profile.attributes.name);
             fs.writeFileSync(path.join(out, 'asc-key-id.txt'), key.keyIdentifier);
             fs.writeFileSync(path.join(out, 'asc-issuer-id.txt'), key.issuerIdentifier);
-            console.log(JSON.stringify({ status: 'SIGNING_READY', bundleId: BUNDLE, profile: profile.attributes.name, certificate: cert.developerPortalIdentifier }));
+            console.log(JSON.stringify({ status: 'SIGNING_READY', bundleId: BUNDLE, profile: profile.attributes.name, certificate: portalCert.id }));
           })().catch(e => { console.error(e.stack || e); process.exit(1); });
           NODE
           node "$RUNNER_TEMP/prepare-signing.js"
