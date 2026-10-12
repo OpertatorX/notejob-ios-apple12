@@ -166,6 +166,8 @@ jobs:
           test -f "$APP/PrivacyInfo.xcprivacy"
           test -f "$APP/en.lproj/InfoPlist.strings"
           test -f "$APP/fr.lproj/InfoPlist.strings"
+          test -f "$APP/Assets.car"
+          grep -F 'CFBundleIcons' "$PWD/artifacts/archive-info-plist.txt"
           if grep -R -E 'GADApplicationIdentifier|NSUserTrackingUsageDescription|ca-app-pub' "$APP"; then
             echo 'ERROR: unexpected ad/tracking identifier present' >&2
             exit 31
