@@ -160,7 +160,12 @@ jobs:
           plutil -p "$APP/Info.plist" | tee "$PWD/artifacts/archive-info-plist.txt"
           grep -F 'com.operatorx.pullpathar' "$PWD/artifacts/archive-info-plist.txt"
           grep -F 'ITSAppUsesNonExemptEncryption' "$PWD/artifacts/archive-info-plist.txt"
+          grep -F 'NSCameraUsageDescription' "$PWD/artifacts/archive-info-plist.txt"
+          grep -F 'NSPhotoLibraryUsageDescription' "$PWD/artifacts/archive-info-plist.txt"
+          grep -F 'CFBundleLocalizations' "$PWD/artifacts/archive-info-plist.txt"
           test -f "$APP/PrivacyInfo.xcprivacy"
+          test -f "$APP/en.lproj/InfoPlist.strings"
+          test -f "$APP/fr.lproj/InfoPlist.strings"
           if grep -R -E 'GADApplicationIdentifier|NSUserTrackingUsageDescription|ca-app-pub' "$APP"; then
             echo 'ERROR: unexpected ad/tracking identifier present' >&2
             exit 31
